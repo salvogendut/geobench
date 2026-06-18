@@ -172,21 +172,41 @@ static void blit_canvas(void)
     gb_curshow();
 }
 
-/* render the whole canvas a row at a time (so you watch it paint). Any key aborts. */
-static void render(void)
+/* Incremental render: a full Mandelbrot is ~15-20s on a 4 MHz Z80, so don't compute
+   it in one blocking call (that froze the whole desktop and let the parked pointer's
+   save-under bake a hole into the canvas). Instead render_start() arms it and x_frame
+   computes ONE row per frame - the pointer, window drag and close stay live, you watch
+   it paint top-down, and any key aborts (handled in x_frame). */
+static unsigned char rendering;        /* 1 while a render is in progress */
+static unsigned char render_px;        /* next canvas pixel column to compute */
+static unsigned char render_py;        /* next canvas row to compute */
+
+static void render_start(void) { rendering = 1; render_px = 0; render_py = 0; }
+
+/* render_step: compute a small budget of pixels per frame and blit each row as it
+   finishes. A whole row is ~0.3s of Z80 fixed-point maths, so doing one per frame
+   pinned the loop at ~3 Hz and felt frozen; a sub-row budget keeps the pointer
+   smooth (the loop, and the k_poll cursor move, run every budget instead). */
+#define RENDER_BUDGET 16               /* canvas pixels computed per frame */
+static void render_step(void)
 {
-    unsigned char px, py, b;
+    unsigned char n = RENDER_BUDGET, b;
     int cx, cy;
-    for (py = 0; py < CANVAS_H; py++) {
-        cy = cy0 + (int)((int)py - CANVAS_H / 2) * step;
-        for (b = 0; b < CANVAS_WB; b++) canvas[(unsigned int)py * CANVAS_WB + b] = 0;
-        for (px = 0; px < CANVAS_W; px++) {
-            unsigned int off = (unsigned int)py * CANVAS_WB + (px >> 2);
-            cx = cx0 + (int)((int)px - CANVAS_W / 2) * step;
-            canvas[off] = set_pixel(canvas[off], (unsigned char)(px & 3), pen_of(mand(cx, cy)));
+    cy = cy0 + (int)((int)render_py - CANVAS_H / 2) * step;
+    while (n--) {
+        unsigned int off;
+        if (render_px == 0)                         /* new row: clear it first */
+            for (b = 0; b < CANVAS_WB; b++)
+                canvas[(unsigned int)render_py * CANVAS_WB + b] = 0;
+        off = (unsigned int)render_py * CANVAS_WB + (render_px >> 2);
+        cx = cx0 + (int)((int)render_px - CANVAS_W / 2) * step;
+        canvas[off] = set_pixel(canvas[off], (unsigned char)(render_px & 3), pen_of(mand(cx, cy)));
+        if (++render_px >= CANVAS_W) {              /* row finished -> blit it */
+            blit_row(render_py);
+            render_px = 0;
+            if (++render_py >= CANVAS_H) { rendering = 0; return; }
+            cy = cy0 + (int)((int)render_py - CANVAS_H / 2) * step;
         }
-        blit_row(py);
-        if (gb_getkey()) return;        /* any key aborts the render */
     }
 }
 
@@ -223,11 +243,6 @@ static void draw_all(void)        /* content only; the WM drew the frame/title (
     recalc_origin();
     blit_canvas();
     draw_buttons();
-    if (!generated) {                                  /* nothing rendered yet (#142) */
-        gb_curhide();
-        gb_text((unsigned char)(win_x + 2), (unsigned char)(CVY + 4), "File > New");
-        gb_curshow();
-    }
 }
 /* sync_rect: pull the live WM-owned geometry before we use it (#146). */
 static void sync_rect(void)
@@ -244,7 +259,7 @@ static void rezoom(unsigned char px, unsigned char py, unsigned char num, unsign
     step = (int)((long)step * num / den);
     if (step < 1) step = 1;
     gb_doc_dirty();                       /* the view (definition) changed (#142) */
-    render();
+    render_start();
 }
 
 /* ---- File > Save (.PIC) ----------------------------------------------------- */
@@ -309,7 +324,7 @@ static void x_new(void)
 {
     cx0 = HOME_CX; cy0 = HOME_CY; step = HOME_STEP;
     generated = 1;
-    render();
+    render_start();
 }
 
 /* x_open: a definition .TXT was loaded into defbuf - parse the maths + render it. */
@@ -322,7 +337,7 @@ static void x_open(unsigned int len)
         cx0 = get_int(&p); cy0 = get_int(&p); step = get_int(&p);
         if (step < 1) step = 1;
         generated = 1;
-        render();
+        render_start();
     } else {
         generated = 0;                     /* not our format -> nothing to show */
     }
@@ -384,6 +399,18 @@ static void x_frame(void)
     unsigned char c;
     sync_rect();
     win_title();                                       /* keep wtitle fresh for the WM title */
+    if (rendering) {                                   /* paint a budget of pixels per frame: the
+                                                          WM/pointer stay live (drag/close still work
+                                                          via their own messages) instead of freezing.
+                                                          No key-abort here: the click that picked
+                                                          File>New buffers a char that gb_getkey
+                                                          returns a frame later (once fire is
+                                                          released) and that would stop the render.
+                                                          Close the window or click +/-/canvas
+                                                          (restarts) to interrupt. */
+        render_step();
+        return;
+    }
     if (gb_doc_frame()) { gb_restore_parent(); return; }   /* a File menu ran (#142) */
     while ((c = gb_getkey()) != 0)                     /* 'r' = reset to the home view */
         if (c == 'r' || c == 'R') { x_new(); gb_doc_dirty(); return; }
