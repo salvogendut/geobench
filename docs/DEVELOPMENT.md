@@ -71,8 +71,23 @@ line in `gbkern.asm`, and copy it to the IDE image in the deploy step):
 - **Icons** (`.IST`): each icon is a 32×32 PNG → `tools/png2cpc.py assets/x.png
   lib/icon_x.asm icon_x 32x32`, then `tools/packicons.py build/NAME.IST
   lib/icon_*.asm ...` in **slot order** (must match `ext_to_icon` in `gbkern.asm`:
-  floppy ide clock trash geobench basic binary picture text folder). Edit an icon
-  set interactively with `tools/iconedit.py` (tkinter).
+  floppy ide clock trash geobench basic binary picture text folder).
+
+  Two ways to get edited icons onto the next card:
+
+  1. **Change the DEFAULT set** (the icons shown out of the box): edit the source
+     `assets/<name>.png` in any image editor (keep the 4-colour desktop palette),
+     then run **`tools/regen_icons.sh`** — it re-runs `png2cpc` for every committed
+     `lib/icon_*.asm` / `assets/paint/*.asm` from its recorded source PNG + size.
+     Rebuild (`tools/build_kernel.sh`) and `packicons` repacks `build/DEFAULT.IST`.
+     Note: the build does **not** auto-convert `assets/` — `build/DEFAULT.IST` is a
+     gitignored artifact regenerated from the committed `lib/icon_*.asm`, so a PNG
+     edit only takes effect after `regen_icons.sh` updates those `.asm` files.
+  2. **Ship a custom selectable set**: edit a set visually with
+     `tools/iconedit.py assets/iconsets/MYSET.IST` (tracked, unlike `build/`), and
+     `stage_dist.sh` / `build_ide_img.sh` copy every `assets/iconsets/*.IST` onto
+     the card automatically. Select it with `ICONS=MYSET` in `GEOBENCH.CFG`. See
+     `assets/iconsets/README.md`.
 - **Pictures** (`.PIC`): convert a PNG to a 4-colour Mode-1 picture with
   `tools/picconv.py` — a tkinter GUI (Open / dither / width / preview / Save) or a
   CLI (`tools/picconv.py in.png out.PIC -d floyd -w 160`). `.PIC` opens in the

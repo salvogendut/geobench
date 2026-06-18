@@ -69,6 +69,9 @@ cp build/GBCFG.RAW   "$STAGE/GBCFG.BIN"
 cp build/GBFAT.RAW   "$STAGE/GBFAT.BIN"
 cp build/DEFAULT.FNT "$STAGE/DEFAULT.FNT"
 cp build/DEFAULT.IST "$STAGE/DEFAULT.IST"
+for ist in assets/iconsets/*.IST; do          # tracked custom icon sets (ICONS=<name>)
+    [ -e "$ist" ] && cp "$ist" "$STAGE/"
+done
 cp assets/WELCOME.TXT "$STAGE/WELCOME.TXT"
 
 for f in "$STAGE"/*; do

@@ -24,7 +24,7 @@ printf '10 OUT &FD0B,&55:IF INP(&FD0B)<>&55 THEN 40\r\n20 OUT &FD0B,&AA:IF INP(&
     > "$OUT/GB.BAS"
 python3 tools/amsdos_header.py build/GBIDE.RAW "$OUT/GBIDE.BIN" GBIDE BIN 0x8000
 python3 tools/amsdos_header.py build/GBALB.RAW "$OUT/GBALB.BIN" GBALB BIN 0x8000
-printf 'FONT=DEFAULT\r\nICONS=DEFAULT\r\nCURSOR=DEFAULT\r\nVIEW=DEFAULT\r\n' \
+printf 'FONT=DEFAULT\r\nICONS=REFINED\r\nCURSOR=DEFAULT\r\nVIEW=DEFAULT\r\n' \
     > "$OUT/GEOBENCH.CFG"
 
 # --- /GEOBENCH: apps, modules, assets -----------------------------------------
@@ -37,5 +37,8 @@ cp build/FLOPPYSV.RAW "$SYS/FLOPPYSV.BIN"   # #135: paged AMSDOS/floppy write mo
 cp build/GBUI.RAW "$SYS/GBUI.BIN"           # #142: paged dialog (popup/prompt/file-picker) module
 cp build/DEFAULT.FNT build/CLASSIC.FNT build/DEFAULT.IST build/PAINT.IST \
    build/DEFAULT.SPR build/HAND.SPR "$SYS/"
+for ist in assets/iconsets/*.IST; do          # tracked custom icon sets (edit with
+    [ -e "$ist" ] && cp "$ist" "$SYS/"         # tools/iconedit.py); select via ICONS=<name>
+done
 cp assets/WELCOME.TXT "$SYS/"
 cp assets/penguin.PIC "$SYS/PENGUIN.PIC"   # sample 200x200 picture (view in Viewer)
