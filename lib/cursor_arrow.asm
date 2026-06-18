@@ -11,5 +11,7 @@ cursor_arrow_w        equ   4
 cursor_arrow_h        equ   16
 cursor_arrow_hx       equ   1
 cursor_arrow_hy       equ   0
-cursor_arrow_data     dw    CUR_LOW,CUR_LOW,CUR_LOW+#80,CUR_LOW+#80
-cursor_arrow_mask     dw    CUR_LOW+#40,CUR_LOW+#40,CUR_LOW+#C0,CUR_LOW+#C0
+; Interleaved (mask,data) sprite, one pointer per phase. Buffer at CUR_LOW: phase0
+; (shift 0) @ +0, phase2 (shift 2) @ +#80; each cursor_arrow_w*cursor_arrow_h*2 =
+; 128 B. sub 0,1 -> phase0, 2,3 -> phase2 (the 4->2 phase alias, #62).
+cursor_arrow_spr      dw    CUR_LOW,CUR_LOW,CUR_LOW+#80,CUR_LOW+#80

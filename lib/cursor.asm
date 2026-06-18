@@ -126,68 +126,60 @@ cd_yclip
                 sub   b
                 ld    (cur_drows),a
 
-                call  cur_setsb              ; save the on-screen (clipped) background block
+                call  cur_setsb              ; save the (clipped) background block under the sprite
                 call  save_block
-
-                ld    a,(cur_sub)            ; pick the pre-shifted data/mask
-                add   a,a
+                ld    a,(cur_sub)            ; HL = the interleaved (mask,data) sprite for this
+                add   a,a                      ; sub-phase; kept in HL across rows
                 ld    e,a
                 ld    d,0
-                ld    hl,cursor_arrow_data
+                ld    hl,cursor_arrow_spr
                 add   hl,de
                 ld    a,(hl)
                 inc   hl
                 ld    h,(hl)
                 ld    l,a
-                ld    (cur_dptr),hl
-                ld    de,#40                 ; mask buffer is always data+#40 (cursor_arrow.asm
-                add   hl,de                   ; layout: d0@+0,m0@+#40 / d2@+#80,m2@+#C0)
-                ld    (cur_mptr),hl
-                ld    hl,cur_bg
-                ld    (cur_bgp),hl
-
-                ld    a,(cur_drows)           ; composite into screen (clipped rows)
+                ld    de,cur_bg              ; DE = saved-background read ptr, kept across rows
+                ld    a,(cur_drows)
                 ld    (cc_rows),a
                 ld    a,(cur_line)
                 ld    (cc_y),a
+                ; Fast composite: the sprite is mask,data INTERLEAVED, so the inner loop keeps all
+                ; three pointers in registers (no per-pixel (nn) reloads) - several x the old
+                ; composite, so it stays ahead of the CRTC beam over the pointer's own scanlines
+                ; sideways (#cursor-tear: the old reload-per-pixel composite was ~1 raster line per
+                ; pixel and the beam caught it mid-write = a sliced band).
 cc_row
+                push  hl                      ; keep sprite + save ptrs across scr_addr
+                push  de
                 ld    a,(cur_xbyte)
                 ld    d,a
                 ld    a,(cc_y)
                 ld    e,a
                 call  scr_addr               ; HL = screen row addr
-                ld    a,(cur_dcols)           ; clipped cols
+                ld    b,h
+                ld    c,l                     ; BC = screen ptr
+                pop   de                      ; DE = save-under ptr
+                pop   hl                      ; HL = sprite ptr
+                ld    a,(cur_dcols)
                 ld    (cc_cols),a
 cc_col
-                push  hl
-                ld    hl,(cur_bgp)           ; A = background byte
-                ld    a,(hl)
+                ld    a,(de)                  ; bg from the saved buffer
+                inc   de
+                and   (hl)                    ; (bg AND mask)
                 inc   hl
-                ld    (cur_bgp),hl
-                ld    hl,(cur_mptr)
-                and   (hl)                    ; A = bg AND mask
+                or    (hl)                    ;         OR data
                 inc   hl
-                ld    (cur_mptr),hl
-                ld    hl,(cur_dptr)
-                or    (hl)                    ; A = (bg AND mask) OR data
-                inc   hl
-                ld    (cur_dptr),hl
-                pop   hl
-                ld    (hl),a
-                inc   hl
+                ld    (bc),a                  ; composite to the screen
+                inc   bc
                 ld    a,(cc_cols)
                 dec   a
                 ld    (cc_cols),a
                 jr    nz,cc_col
-                ld    a,(cur_skip)            ; advance data/mask past the clipped (off-screen)
-                ld    c,a                      ; sprite cols to the next row (0 when not clipped;
-                ld    b,0                      ; cur_bgp is cur_dcols-wide, already aligned)
-                ld    hl,(cur_dptr)
-                add   hl,bc
-                ld    (cur_dptr),hl
-                ld    hl,(cur_mptr)
-                add   hl,bc
-                ld    (cur_mptr),hl
+                ld    a,(cur_skip)            ; skip the clipped sprite cols (x2 = mask+data)
+                add   a,a
+                ld    c,a
+                ld    b,0
+                add   hl,bc                   ; advance the sprite ptr to the next row
                 ld    a,(cc_y)
                 inc   a
                 ld    (cc_y),a
@@ -207,9 +199,6 @@ cur_line        db    0
 cur_supp        db    0            ; 1 = suppress drawing (DnD drag shows a ghost instead)
 cur_shown       db    0            ; 1 = the arrow is currently composited on screen (#126)
 cur_sub         db    0
-cur_dptr        dw    0
-cur_mptr        dw    0
-cur_bgp         dw    0
 cc_rows         db    0
 cc_y            db    0
 cc_cols         db    0
