@@ -590,7 +590,10 @@ static void fm_fullscreen(unsigned char on)
     gb_wm_setpos(win_x, win_y);
     gb_wm_setsize(win_w, win_h);
     clamp_top();                          /* a taller window shows more rows */
-    gb_restore_parent();                  /* WM repaints frame + fm_draw at the new size */
+    gb_wm_damage(0, 8, 80, 192);          /* repaint ONCE in on_frame over the FULL toggle area (like
+                                             every other app): a restore shrinks+moves the window, and
+                                             setsize's clip doesn't cover the area the maximized window
+                                             vacated - leaving a ghost scrollbar/listing behind (#156) */
 }
 
 static const char *const fm_view_items[] = { "Icons / List", 0 };
