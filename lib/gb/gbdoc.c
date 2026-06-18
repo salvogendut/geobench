@@ -90,6 +90,10 @@ static void edit_action(unsigned char sel)
  * "Fullscreen" toggles (the app resizes its own window); app view_items follow. */
 static const char *g_view[8];          /* "Fullscreen" + the app's view_items */
 static unsigned char g_fullscreen;     /* current fullscreen toggle state */
+/* #156: the kernel sets this byte when the title-bar maximize gadget is clicked; gb_doc_frame
+ * toggles the SAME g_fullscreen the View > Fullscreen menu uses, so the two stay in sync. We
+ * clear it when a doc registers (below) so stale RAM can't toggle before the first frame. */
+#define gb_maxreq (*(volatile unsigned char *)0x1309)
 static void view_action(unsigned char sel)
 {
     unsigned char base = 0;
@@ -138,6 +142,7 @@ void gb_doc(const gb_doc_t *d)
         g_nitems[t]  = nv;
         g_handler[t] = view_action;
         g_fullscreen = 0;
+        gb_maxreq    = 0;                /* #156: arm the maximize gadget from a known state */
         g_ntitles    = (unsigned char)(t + 1);
     }
     rebuild();
@@ -271,6 +276,10 @@ static void file_action(unsigned char sel)
 unsigned char gb_doc_frame(void)
 {
     unsigned char t, sel;
+    if (gb_maxreq) {                                  /* maximize/restore gadget clicked */
+        gb_maxreq = 0;
+        if (g_doc->on_fullscreen) { view_action(0); return 1; }  /* same toggle as View>Fullscreen */
+    }
     if (!g_want) return 0;
     t = (unsigned char)(g_want - 1);
     g_want = 0;

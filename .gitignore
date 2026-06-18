@@ -34,3 +34,4 @@ __pycache__/
 # is a local build artifact, not committed. Build it with tools/build_card_img.sh.
 QA/GEOBENCH.IMG
 rom/GEOBENCH.ROM
+rom/GBALB.ROM

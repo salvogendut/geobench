@@ -33,6 +33,13 @@ GB_ROM_REQ      equ   0                       ; through GEOBENCH.ROM if present.
                 if GB_ROM_REQ
 GB_ROM          equ   1
                 endif
+; #156: the window maximize/restore + close-X title-bar gadgets are resident chrome, so they
+; only build where there is headroom - the GB_ROM (offloaded) kernels, or the smaller Albireo
+; kernel. The plain no-ROM IDE kernel is full, so it keeps the simple close box.
+                if GB_ROM_REQ | STORAGE_ALBIREO
+WM_GADGETS      equ   1
+                endif
+WM_MAXREQ       equ   #1309        ; #156: 1 = the maximize gadget was clicked; gb_doc_frame toggles
 
                 ifdef GB_ROM                  ; #152: the floppy read backend (fs_amsdos) is offloaded
 FS_RDIO_LOWRAM  equ   1                       ; to GEOBENCH.ROM; its scratch state must live in fixed
@@ -646,7 +653,23 @@ gb_open_window
                 ld    (tc_y),a
                 ld    hl,kw_title
                 call  draw_text
+                ifdef WM_GADGETS
+                ld    b,2                     ; close 'X' glyph: pen 2 (black) on pen 1 (white box)
+                ld    c,1
+                call  set_text_pens
+                ld    a,(kw_x)
+                inc   a
+                ld    (tc_x),a
+                ld    a,(kw_y)
+                add   a,3
+                ld    (tc_y),a
+                ld    hl,gad_x_str
+                call  draw_text
+                endif
                 jp    from_data
+                ifdef WM_GADGETS
+gad_x_str       db    "X",0
+                endif
 
 ; kwin_frame: blue interior, black title bar + borders, white close gadget.
 kwin_frame
@@ -707,7 +730,40 @@ kf_stripe       ld    a,(kf_sy)
                 ld    c,a
                 ld    d,2
                 ld    e,10
+                call  fill_xywh              ; (the 'X' glyph is drawn in gb_open_window, font)
+                ifdef WM_GADGETS
+; maximize gadget on the right: white box (x+w-4, y+2, 3, 10) + a centered black square.
+; (3 bytes wide so the black square sits in the MIDDLE byte with white either side - a 2-byte
+; box would have both edge bytes filled by k_frame, i.e. solid black. 1 byte = 4 px in mode 1.)
+                ld    a,#F0
+                ld    (fb_val),a
+                ld    a,(kw_x)
+                ld    hl,kw_w
+                add   a,(hl)                  ; A = x + w
+                sub   4
+                ld    (kf_gx),a              ; gadget x (also reused by the hit-test)
+                ld    b,a
+                ld    a,(kw_y)
+                add   a,2
+                ld    c,a
+                ld    d,3
+                ld    e,10
+                call  fill_xywh
+                ld    a,#0F                   ; black (pen 2) filled square in the centre byte
+                ld    (fb_val),a
+                ld    a,(kf_gx)
+                inc   a                        ; centre byte (gx+1)
+                ld    b,a
+                ld    a,(kw_y)
+                add   a,5
+                ld    c,a
+                ld    d,1                       ; 4 px wide
+                ld    e,4                       ; 4 px tall
                 jp    fill_xywh
+kf_gx           db    0            ; maximize-gadget x byte-col (set by kwin_frame)
+                else
+                ret                            ; plain (no-room) build: just the close box
+                endif
 kw_x            db    0
 kw_y            db    0
 kw_w            db    0
@@ -1692,17 +1748,32 @@ wm_chrome_frame
                 jr    c,mwf_content           ; my < win_y
                 cp    14                       ; TITLE_H
                 jr    nc,mwf_content           ; my >= win_y+14 -> content
-                ld    a,(POLL_MX)            ; in title bar: close gadget? mx < win_x+5
+                ld    a,(POLL_MX)            ; in title bar: which gadget?
                 ld    e,a
                 ld    a,(MW_RECT)
                 add   a,5
                 cp    e
-                jr    c,mwf_title             ; win_x+5 < mx -> title -> drag
-                jr    z,mwf_title
+                jr    c,mwf_notclose          ; win_x+5 < mx -> not the close gadget
+                jr    z,mwf_notclose
                 jr    mw_do_close             ; mx < win_x+5 -> close gadget
+mwf_notclose
+                ifdef WM_GADGETS
+                ld    a,(MW_RECT)            ; maximize gadget? mx >= win_x + win_w - 4
+                ld    hl,MW_RECT+2
+                add   a,(hl)                  ; A = win_x + win_w
+                sub   4
+                cp    e
+                jr    c,mwf_max              ; (win_x+win_w-4) < mx -> maximize/restore
+                jr    z,mwf_max
+                endif
 mwf_title
-                ld    a,GB_MSG_DRAG          ; title-bar press -> drag the window
+                ld    a,GB_MSG_DRAG          ; otherwise a title-bar press -> drag the window
                 jp    mw_hook
+                ifdef WM_GADGETS
+mwf_max         ld    a,1                     ; flag the toggle; gb_doc_frame acts next frame
+                ld    (WM_MAXREQ),a
+                ret
+                endif
 mwf_content
                 ld    a,GB_MSG_CLICK         ; content (incl. grip) -> a content press
                 jp    mw_hook
