@@ -2311,6 +2311,11 @@ wm_repaint_all
                 ld    a,(cur_supp)              ; #148: hide the pointer before the repaint so it
                 or    a                           ; can't pollute its save-under (else a later move
                 call  z,cursor_erase             ; restores stale content = a pointer-sized hole).
+                ld    a,1                         ; lock the cursor for the whole loop: app on_draw
+                ld    (cur_paintlock),a           ; handlers also bracket with gb_curhide/show, and
+                                                  ; that 2nd erase restores a stale save-under over
+                                                  ; chrome a window drew earlier this pass (the XAOS
+                                                  ; title hole, on File>New AND drag). Bracket ONCE.
                 di                                ; Skip during a DnD ghost (cur_supp owns the screen)
                 xor   a
                 ld    (wm_rp_i),a
@@ -2357,6 +2362,8 @@ wra_done        ld    a,(wm_rp_back)
                 call  bank_set
                 call  clip_set_full              ; repaints are clip-limited; restore the
                 ei                                ; full-screen clip for normal drawing
+                xor   a                           ; unlock: loop done, now show the pointer ONCE
+                ld    (cur_paintlock),a           ; over the final composited screen (fresh save-under)
                 ld    a,(cur_supp)              ; #148: ensure the pointer is up with a FRESH
                 or    a                           ; save-under over the just-repainted content.
                 call  z,cursor_show               ; GUARDED (#153): a handler that ends in gb_curshow

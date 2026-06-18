@@ -18,6 +18,9 @@ CUR_W           equ   cursor_arrow_w
 CUR_H           equ   cursor_arrow_h
 
 cursor_show
+                ld    a,(cur_paintlock)      ; suppressed inside wm_repaint_all: the WM brackets the
+                or    a                       ; whole repaint with ONE erase+show, so an app on_draw's
+                ret   nz                      ; own gb_curshow can't stamp a stale pointer mid-loop
                 ld    a,(cur_shown)          ; already on screen? a bare re-draw would
                 or    a                       ; save the cursor into its own save-under
                 ret   nz                      ; -> a ghost on the next move (#126). cursor_
@@ -57,6 +60,9 @@ cm_storeonly
 
 ; cursor_erase: restore the screen block saved at the last draw position.
 cursor_erase
+                ld    a,(cur_paintlock)      ; suppressed inside wm_repaint_all (see cursor_show):
+                or    a                       ; an app on_draw's gb_curhide here would restore its
+                ret   nz                      ; stale save-under OVER chrome drawn earlier this pass
                 xor   a                       ; cursor no longer on screen (#126)
                 ld    (cur_shown),a
                 call  cur_setsb
@@ -198,6 +204,7 @@ cur_xbyte       db    0
 cur_line        db    0
 cur_supp        db    0            ; 1 = suppress drawing (DnD drag shows a ghost instead)
 cur_shown       db    0            ; 1 = the arrow is currently composited on screen (#126)
+cur_paintlock   db    0            ; 1 = inside wm_repaint_all: suppress app/handler cursor ops
 cur_sub         db    0
 cc_rows         db    0
 cc_y            db    0
