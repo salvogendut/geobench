@@ -240,13 +240,22 @@ rc_out          scf
 ; save-under.
 ;
 ; READING screen RAM is shadowed by the upper ROM at #C000, so save_block pages
-; the upper ROM out around the reads (DI + Gate Array ROM/mode register: #89 =
-; mode 1, upper ROM off; #81 = mode 1, upper ROM on). WRITING always reaches
-; RAM, so restore_block needs none of that.
+; the upper ROM out around the reads (DI + Gate Array ROM/mode register: #8D =
+; mode 1, upper ROM off + lower ROM off; #85 = mode 1, upper ROM on + lower ROM
+; off). WRITING always reaches RAM, so restore_block needs none of that.
+;
+; The ROM/mode byte MUST keep the lower ROM OFF (bit2 set) - GEOBENCH runs with
+; low RAM visible at #0000-#3FFF (cursor sprite at CUR_LOW=#1500, FAT scratch,
+; etc.). The old #89/#81 cleared bit2, paging the firmware LOWER ROM over that
+; low RAM (the #152 "#7F81 also enabled the lower ROM" gotcha). It was usually
+; masked because a deferred interrupt fired after EI and reset the banking before
+; the caller read low RAM - but a SHORT save_block (a bottom-clipped cursor, just
+; 1-2 rows) finishes too fast for that, so the composite then read firmware bytes
+; as the sprite = garbage on the pointer's top rows near the screen bottom.
 
 save_block
                 di
-                ld    bc,#7F89               ; upper ROM off (mode 1)
+                ld    bc,#7F8D               ; upper ROM off + lower ROM off (mode 1)
                 out   (c),c
                 ld    a,(sb_h)
                 ld    (sb_rows),a
@@ -273,7 +282,7 @@ sv_loop
                 dec   a
                 ld    (sb_rows),a
                 jr    nz,sv_loop
-                ld    bc,#7F81               ; upper ROM back on
+                ld    bc,#7F85               ; upper ROM back on (lower ROM stays off)
                 out   (c),c
                 ei
                 ret
