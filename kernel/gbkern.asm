@@ -1735,7 +1735,7 @@ wm_chrome_frame
                 call  mw_hook
                 ld    a,(POLL_FLAGS)
                 bit   1,a                     ; GB_QUIT
-                jr    nz,mw_do_close
+                jp    nz,mw_do_close          ; (jp: mwf_max grew the block past jr range)
                 ld    a,(POLL_FLAGS)
                 bit   0,a                     ; GB_CLICK
                 ret   z
@@ -1770,9 +1770,61 @@ mwf_title
                 ld    a,GB_MSG_DRAG          ; otherwise a title-bar press -> drag the window
                 jp    mw_hook
                 ifdef WM_GADGETS
-mwf_max         ld    a,1                     ; flag the toggle; gb_doc_frame acts next frame
-                ld    (WM_MAXREQ),a
-                ret
+; mwf_max: the maximize/restore gadget does a WINDOWED maximize (chrome stays) - distinct from
+; the borderless View>Fullscreen / 'F' (the app's on_fullscreen). Toggle the focused window
+; between its saved size and full-below-the-bar (0,8 .. 80x192); flags bit2 (MW_MAXED) tracks
+; which way. The pre-max geometry is one global, so restoring the earlier of two maximized
+; windows would use the later one's size - a rare case not worth a per-window store.
+mwf_max         ld    a,(WM_FOCUS)
+                call  wm_entry               ; HL = focused entry
+                push  hl
+                ld    de,WM_FR_FLAGS
+                add   hl,de
+                bit   2,(hl)                  ; already maximized?
+                jr    nz,mwf_unmax
+                set   2,(hl)
+                pop   hl                      ; HL = entry; save geom, then fill the screen
+                push  hl
+                inc   hl
+                ld    a,(hl)
+                ld    (wm_sav_x),a
+                ld    (hl),0
+                inc   hl
+                ld    a,(hl)
+                ld    (wm_sav_y),a
+                ld    (hl),8
+                inc   hl
+                ld    a,(hl)
+                ld    (wm_sav_w),a
+                ld    (hl),80
+                inc   hl
+                ld    a,(hl)
+                ld    (wm_sav_h),a
+                ld    (hl),192
+                jr    mwf_max_paint
+mwf_unmax       res   2,(hl)
+                pop   hl                      ; HL = entry; restore the saved geometry
+                push  hl
+                inc   hl
+                ld    a,(wm_sav_x)
+                ld    (hl),a
+                inc   hl
+                ld    a,(wm_sav_y)
+                ld    (hl),a
+                inc   hl
+                ld    a,(wm_sav_w)
+                ld    (hl),a
+                inc   hl
+                ld    a,(wm_sav_h)
+                ld    (hl),a
+mwf_max_paint   pop   hl                      ; HL = entry
+                call  mw_publish             ; refresh MW_RECT (the app reads gb_wm_x/y/w/h)
+                call  clip_set_full
+                jp    wm_repaint_all
+wm_sav_x        db    0
+wm_sav_y        db    0
+wm_sav_w        db    0
+wm_sav_h        db    0
                 endif
 mwf_content
                 ld    a,GB_MSG_CLICK         ; content (incl. grip) -> a content press

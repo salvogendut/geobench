@@ -117,9 +117,10 @@ static void select_icon(unsigned char icon)
    by the GBCFG module) and MENU_DEF (the focused window's menu, kept by the WM). */
 #define KCFG_MEMSTR ((const char *)0x121A)
 #define MENU_DEF    ((volatile unsigned char *)0x1310)
+#define WM_FS       ((volatile unsigned char *)0x130A)   /* 1 = a window is fullscreen (kernel) */
 #define CLK_COL     68            /* clock column (matches the old kernel bar) */
 
-static unsigned char bar_init, bar_min, bar_msig;
+static unsigned char bar_init, bar_min, bar_msig, bar_wasfs;
 
 static unsigned char bin(unsigned char v)   /* raw RTC reg -> binary (gb_time) */
 {
@@ -154,6 +155,8 @@ static void bar_clock(void)
 static void bar_draw(void)
 {
     unsigned char msig, i;
+    if (*WM_FS) { bar_wasfs = 1; return; }    /* fullscreen: the borderless window owns lines 0-7 */
+    if (bar_wasfs) { bar_wasfs = 0; bar_init = 0; }   /* just exited -> force a full bar redraw */
     if (!bar_init) {                          /* first frame: white strip + RAM size */
         gb_curhide();
         gb_fill(0, 0, 80, 8, 1);
@@ -409,6 +412,8 @@ static const gb_win_t deskwin = { 0, 8, 80, 192, on_frame, paint, on_event, 0 };
 
 void main(void)
 {
+    *WM_FS = 0;                                 /* clear the fullscreen flag at boot (low RAM is
+                                                   uninitialised; bar_draw reads it every frame) */
     drive_poll();                               /* drives present at boot -> icons (#65) */
     paint();
     gb_curshow();                               /* paint() no longer shows the pointer (#153) */

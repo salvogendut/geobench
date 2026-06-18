@@ -276,10 +276,15 @@ static void file_action(unsigned char sel)
 unsigned char gb_doc_frame(void)
 {
     unsigned char t, sel;
-    if (gb_maxreq) {                                  /* maximize/restore gadget clicked */
-        gb_maxreq = 0;
-        if (g_doc->on_fullscreen) { view_action(0); return 1; }  /* same toggle as View>Fullscreen */
+    /* the maximize gadget is now a WINDOWED maximize handled in the kernel (mwf_max), separate
+       from the borderless fullscreen below - it no longer routes through here. */
+#ifdef GBDOC_RO
+    if (g_doc->on_fullscreen) {                       /* read-only viewers: 'F' toggles fullscreen -
+                                                         the only way back once the bar+menu hide */
+        unsigned char c = gb_getkey();                /* one/frame is fine; this runs every frame */
+        if ((c | 0x20) == 'f') { view_action(0); return 1; }   /* 'F' or 'f' */
     }
+#endif
     if (!g_want) return 0;
     t = (unsigned char)(g_want - 1);
     g_want = 0;

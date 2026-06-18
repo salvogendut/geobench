@@ -21,6 +21,7 @@
 #define DEF_H     180
 #define MIN_W     30
 #define MIN_H     72
+#define WM_FS     ((volatile unsigned char *)0x130A)   /* 1 = fullscreen (kernel sets it) */
 
 static char filebuf[VIEW_MAX];
 static char line[MAXWRAP];
@@ -85,18 +86,31 @@ static void parse_pic(void)
 }
 static void draw_pic(void)
 {
-    unsigned char h = pic_h, maxh = (unsigned char)(win_h - 14);   /* window content height */
-    if (h > maxh) h = maxh;                                        /* don't spill past the frame */
+    unsigned char x, y, h = pic_h;
+    if (*WM_FS) {                                  /* fullscreen: centre on the whole screen */
+        x = (unsigned char)((80 - pic_wb) / 2);
+        y = (unsigned char)((200 - pic_h) / 2);
+    } else {                                       /* windowed: top-left, clamped to the frame */
+        unsigned char maxh = (unsigned char)(win_h - 14);
+        if (h > maxh) h = maxh;
+        x = (unsigned char)(win_x + 2);
+        y = TX_Y0;
+    }
     if (pic_off + (unsigned int)pic_wb * h > filen) return;
-    gb_restorerect((unsigned char)(win_x + 2), TX_Y0, pic_wb, h, (unsigned char *)filebuf + pic_off);
+    gb_restorerect(x, y, pic_wb, h, (unsigned char *)filebuf + pic_off);
 }
 
 /* on_draw: the WM already drew the frame/title; paint the content. */
 static void v_draw(void)
 {
     win_x = gb_wm_x(); win_y = gb_wm_y(); win_w = gb_wm_w(); win_h = gb_wm_h();
-    if (!loaded)           ;   /* still loading -> blank window, not the empty-file message */
-    else if (filen == 0)   gb_text(TX_COL, TX_Y0, "(file is empty or could not be read)");
+    if (*WM_FS) {                               /* true fullscreen: blue backdrop, centred image,
+                                                   no chrome/grip (the WM drops the frame+title) */
+        gb_fill(0, 0, 80, 200, 0);              /* pen 0 = desktop blue, whole screen */
+        if (loaded && is_pic()) draw_pic();     /* is_pic() already checks filen */
+        return;
+    }
+    if (!loaded)           ;   /* still loading, or empty/unreadable -> blank (render(0) is a no-op) */
     else if (is_pic())     draw_pic();
     else                   render(filen);
     gb_draw_grip(win_x, win_y, win_w, win_h);   /* resize grip (#146) */
@@ -148,15 +162,20 @@ static void v_click(void)
         }
 }
 
-/* View > Fullscreen (gb_doc): the WM owns the geometry, so just setpos/setsize. */
+/* View > Fullscreen (gb_doc) / the 'F' key: TRUE fullscreen. WM_FS (the shared low-RAM byte)
+   tells the desktop to blank its top bar; we cover the WHOLE screen (so v_draw's blue fill
+   paints over the WM's chrome) and centre the image. Off restores the exact prior window. */
 static void v_fullscreen(unsigned char on)
 {
     static unsigned char px, py, pw, ph;
-    if (on) { px = gb_wm_x(); py = gb_wm_y(); pw = gb_wm_w(); ph = gb_wm_h();
-              gb_wm_setpos(0, 8); gb_wm_setsize(80, 192); }
-    else    { gb_wm_setpos(px, py); gb_wm_setsize(pw, ph); }
-    gb_wm_damage(0, 8, 80, 192);   /* repaint ONCE in the frame handler, clipped to the toggle
-                                      area; repainting here too double-paints (the flicker, #153) */
+    if (on) {
+        px = gb_wm_x(); py = gb_wm_y(); pw = gb_wm_w(); ph = gb_wm_h();
+        gb_wm_setpos(0, 0); gb_wm_setsize(80, 200); *WM_FS = 1;
+    } else {
+        *WM_FS = 0; gb_wm_setpos(px, py); gb_wm_setsize(pw, ph);
+    }
+    gb_wm_damage(0, 0, 80, 200);   /* repaint the whole screen ONCE in the frame handler (the
+                                      toggle changes the entire screen); v_draw does the paint */
 }
 
 /* on_open (File>Load): adopt the name, parse a picture, re-arm the resize. */
