@@ -1836,6 +1836,30 @@ wmf_done
                 ld    a,h                          ; every frame in the desktop's page, so the
                 or    l                            ; bar stays live regardless of which window
                 jr    z,wm_loop                    ; has focus
+                ifdef WM_GADGETS
+                ; The bar repaints the top rows (0..7) EVERY frame; a pointer up there would be
+                ; painted over and, being stationary, never redrawn (cursor_move_to only redraws on
+                ; a move) -> the pointer vanishes near the top + a red row at the save-under seam.
+                ; ONLY when the pointer overlaps the bar (cur_line < 8): bracket the bar draw with
+                ; erase/show (like wm_repaint_all) so it is re-composited on top of the fresh bar.
+                ; A mid-screen pointer is left alone (bracketing every frame would shimmer it).
+                ; cur_supp = a DnD ghost owns the screen. Gated with the gadgets (plain IDE is full).
+                ld    a,(cur_line)
+                cp    8
+                jr    nc,wmf_bar                  ; pointer below the bar -> plain draw, no bracket
+                ld    a,(cur_supp)
+                or    a
+                call  z,cursor_erase
+                ld    a,PAGE_APP0
+                call  bank_set
+                ld    hl,(BAR_HANDLER)
+                call  md_call
+                ld    a,(cur_supp)
+                or    a
+                call  z,cursor_show
+                jr    wm_loop
+                endif
+wmf_bar
                 ld    a,PAGE_APP0
                 call  bank_set
                 ld    hl,(BAR_HANDLER)
