@@ -1832,39 +1832,15 @@ wmf_legacy
                 ld    l,a
                 call  md_call
 wmf_done
-                ld    hl,(BAR_HANDLER)            ; top-bar hook (#77): run the bar handler
-                ld    a,h                          ; every frame in the desktop's page, so the
-                or    l                            ; bar stays live regardless of which window
-                jr    z,wm_loop                    ; has focus
-                ifdef WM_GADGETS
-                ; The bar repaints the top rows (0..7) EVERY frame; a pointer up there would be
-                ; painted over and, being stationary, never redrawn (cursor_move_to only redraws on
-                ; a move) -> the pointer vanishes near the top + a red row at the save-under seam.
-                ; ONLY when the pointer overlaps the bar (cur_line < 8): bracket the bar draw with
-                ; erase/show (like wm_repaint_all) so it is re-composited on top of the fresh bar.
-                ; A mid-screen pointer is left alone (bracketing every frame would shimmer it).
-                ; cur_supp = a DnD ghost owns the screen. Gated with the gadgets (plain IDE is full).
-                ld    a,(cur_line)
-                cp    8
-                jr    nc,wmf_bar                  ; pointer below the bar -> plain draw, no bracket
-                ld    a,(cur_supp)
-                or    a
-                call  z,cursor_erase
-                ld    a,PAGE_APP0
-                call  bank_set
-                ld    hl,(BAR_HANDLER)
-                call  md_call
-                ld    a,(cur_supp)
-                or    a
-                call  z,cursor_show
-                jr    wm_loop
-                endif
-wmf_bar
-                ld    a,PAGE_APP0
-                call  bank_set
-                ld    hl,(BAR_HANDLER)
-                call  md_call
-                jr    wm_loop
+                ld    hl,(BAR_HANDLER)            ; top-bar hook (#77): run the bar handler every
+                ld    a,h                          ; frame in the desktop's page so the bar stays
+                or    l                            ; live regardless of which window has focus.
+                jr    z,wm_loop                    ; bar_draw only repaints lines 0-7 when the clock
+                ld    a,PAGE_APP0                  ; minute or menu actually changes (and brackets
+                call  bank_set                     ; its own redraws with gb_curhide/show), so the
+                ld    hl,(BAR_HANDLER)            ; pointer over the bar is left untouched - do NOT
+                call  md_call                      ; erase/show it every frame here: that landed the
+                jr    wm_loop                      ; erase at the beam and dropped the bar pointer.
 
 ; k_on_bar (GB_ONBAR #77): HL = a handler the WM loop runs every frame in PAGE_APP0
 ; (the desktop's page) to draw the top bar, independent of focus. 0 to clear.
