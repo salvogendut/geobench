@@ -1919,8 +1919,6 @@ wmo_fail
 ; closing on_frame can still execute (its page content survives until reused).
 k_wm_close
                 ld    a,(WM_FOCUS)
-                call  wm_set_clip                 ; damage = the closing window's rect
-                ld    a,(WM_FOCUS)
                 ld    c,a                          ; C = slot being closed
                 call  wm_entry                    ; HL = entry
                 ld    a,(hl)                       ; page
@@ -1930,8 +1928,14 @@ k_wm_close
                 ld    (hl),0                       ; mark dead (clear the alive flag)
                 call  wm_z_remove                 ; drop slot C from the z-order (keeps C)
                 call  wm_focus_top                ; refocus the new live z-top
+                ld    a,#FF                        ; #156: force the next wm_map_focus to re-install
+                ld    (WM_FPREV),a               ; the newly-focused (desktop) menu - else the bar
+                                                  ; keeps the closed window's menu title (stale "View")
                 pop   af                           ; A = the closed window's page
                 call  wm_free_page                 ; release it (z-order already updated)
+                call  clip_set_full              ; #156: full repaint so the desktop fully restores the
+                                                  ; icons/labels the window had overlapped (clipping to
+                                                  ; the window rect left truncated drive labels behind)
                 jp    wm_repaint_all               ; repaint remaining windows + return
 
 ; k_wm_setpos (GB_WMSETPOS): A = x, L = y -> move the focused window's hit rect to
