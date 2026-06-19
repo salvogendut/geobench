@@ -43,8 +43,8 @@ WM_MAXREQ       equ   #1309        ; #156: 1 = the maximize gadget was clicked; 
                                    ; (#130A is the app-side WM_FS fullscreen flag, #163)
 PIC_PAGE        equ   #130B        ; #164 banked Viewer picture buffer: the borrowed app-pool page
 PIC_WB          equ   #130C        ; (0 = none) + the parsed .PIC header the Viewer reads back:
-PIC_H           equ   #130D        ; width in bytes, height in rows,
-PIC_OFF         equ   #130E        ; and the bitmap offset (6 v1 / 14 v2).
+PIC_H           equ   #130D        ; width in bytes, height in rows (16-bit #130D/E - tall pics
+PIC_OFF         equ   #130F        ; exceed 255, #166), and the bitmap offset (6 v1 / 14 v2).
 
                 ifdef GB_ROM                  ; #152: the floppy read backend (fs_amsdos) is offloaded
 FS_RDIO_LOWRAM  equ   1                       ; to GEOBENCH.ROM; its scratch state must live in fixed
@@ -1146,15 +1146,17 @@ k_pic_open
                 rr    l
                 ld    a,l
                 ld    (PIC_WB),a
-                ld    a,(#4008)             ; height (rows)
-                ld    (PIC_H),a
+                ld    hl,(#4008)            ; height (rows), 16-bit (tall pics > 255, #166)
+                ld    (PIC_H),hl
                 ld    a,14                   ; bitmap offset
                 ld    (PIC_OFF),a
                 jr    kpo_ok
 kpo_v1          ld    a,(#4004)             ; v1: byte width, then height, bitmap at +6
                 ld    (PIC_WB),a
                 ld    a,(#4005)
-                ld    (PIC_H),a
+                ld    l,a
+                ld    h,0
+                ld    (PIC_H),hl
                 ld    a,6
                 ld    (PIC_OFF),a
 kpo_ok          pop   af                       ; restore the Viewer's page
