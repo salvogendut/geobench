@@ -40,6 +40,11 @@ GB_ROM          equ   1
 WM_GADGETS      equ   1
                 endif
 WM_MAXREQ       equ   #1309        ; #156: 1 = the maximize gadget was clicked; gb_doc_frame toggles
+                                   ; (#130A is the app-side WM_FS fullscreen flag, #163)
+PIC_PAGE        equ   #130B        ; #164 banked Viewer picture buffer: the borrowed app-pool page
+PIC_WB          equ   #130C        ; (0 = none) + the parsed .PIC header the Viewer reads back:
+PIC_H           equ   #130D        ; width in bytes, height in rows,
+PIC_OFF         equ   #130E        ; and the bitmap offset (6 v1 / 14 v2).
 
                 ifdef GB_ROM                  ; #152: the floppy read backend (fs_amsdos) is offloaded
 FS_RDIO_LOWRAM  equ   1                       ; to GEOBENCH.ROM; its scratch state must live in fixed
@@ -178,7 +183,11 @@ WM_FR_ARG       equ   14           ;   11-byte 8.3 file arg, captured at gb_wm_a
                 jp    k_fill                 ; GB_FILL    #8033
                 jp    k_saverect             ; GB_SAVERECT    #8036
                 jp    k_restorerect          ; GB_RESTORERECT #8039
-                jp    k_noop                 ; GB_XORFRAME    #803C (dead stub -> shared ret, #148)
+                ifdef WM_GADGETS
+                jp    k_pic_open             ; GB_PICOPEN     #803C (#164; was dead GB_XORFRAME)
+                else
+                jp    k_ret0                 ; no banked picture support -> A=0 (Viewer falls back)
+                endif
                 jp    k_fsload               ; GB_FSLOAD      #803F
                 jp    k_fssave               ; GB_FSSAVE      #8042
                 jp    k_getkey               ; GB_GETKEY      #8045
@@ -186,14 +195,22 @@ WM_FR_ARG       equ   14           ;   11-byte 8.3 file arg, captured at gb_wm_a
                 jp    k_onevent              ; GB_ONEVENT     #804B
                 jp    k_menu                 ; GB_MENU        #804E
                 jp    k_setname              ; GB_SETNAME     #8051
-                jp    k_noop                 ; GB_ONREPAINT   #8054 (dead stub -> shared ret, #148)
+                ifdef WM_GADGETS
+                jp    k_pic_blit             ; GB_PICBLIT     #8054 (#164; was dead GB_ONREPAINT)
+                else
+                jp    k_noop                 ; (never called when GB_PICOPEN returned A=0)
+                endif
                 jp    wm_repaint_all         ; GB_RESTPAR     #8057 (was jp k_restore_parent; #148)
                 jp    k_wm_run               ; GB_WMRUN       #805A
                 jp    wm_register            ; GB_WMADD       #805D (was jp k_wm_add; #148)
                 jp    k_wm_open              ; GB_WMOPEN      #8060
                 jp    k_wm_close             ; GB_WMCLOSE     #8063
                 jp    k_wm_setpos            ; GB_WMSETPOS    #8066
-                jp    k_noop                 ; GB_WMLAUNCH    #8069 (dead stub -> shared ret, #148)
+                ifdef WM_GADGETS
+                jp    k_pic_close            ; GB_PICCLOSE    #8069 (#164; was dead GB_WMLAUNCH)
+                else
+                jp    k_noop                 ; (never called when GB_PICOPEN returned A=0)
+                endif
                 jp    k_isdir                ; GB_ISDIR       #806C
                 jp    k_chdir                ; GB_CHDIR       #806F
                 jp    k_back                 ; GB_BACK        #8072
@@ -575,6 +592,8 @@ k_cls
                 jp    SCR_SET_MODE            ; mode 1 clears; returns to caller
 k_noop                                         ; shared no-op for dead ABI slots (#148):
                 ret                            ; GB_PRINT/QUIT/LAUNCH/XORFRAME/ONREPAINT/WMLAUNCH
+k_ret0          xor   a                        ; shared "return 0" (e.g. GB_PICOPEN when a kernel
+                ret                            ; has no banked-picture support, #164)
 
 ; to_data / from_data: save the caller's bank page and map PAGE_DATA (the font /
 ; icon page), then restore it. One shared save slot (dp_save) - these swaps are
@@ -1072,6 +1091,113 @@ la_escwait                                     ; if the app quit on ESC, wait fo
                 jr    nz,la_escwait            ; cascading all the way back to BASIC
                 ret
 launch_depth    db    0
+
+                ifdef WM_GADGETS
+; --- #164 banked Viewer picture buffer ------------------------------------------------------
+; Mirrors launch_app's load-into-a-bank: borrow a free app-pool page, map it at #4000, load the
+; opened file into it, blit from it with restore_block (which reads its sb_buf in the #4000
+; window). Lets the Viewer show a .PIC bigger than its own 16K page (up to a full-screen 320x200).
+;
+; k_pic_open (GB_PICOPEN): load the opened file into a borrowed bank + parse the .PIC header.
+; -> A=1 with PIC_WB/PIC_H/PIC_OFF set if it's a .PIC loaded OK; A=0 (no free bank, or not a
+; .PIC - the bank is released) so the Viewer falls back to its in-page buffer.
+k_pic_open
+                call  wm_alloc_page          ; A = a free app-pool page, or 0 = none free
+                or    a
+                ret   z                        ; -> A=0, caller uses its in-page buffer
+                ld    (PIC_PAGE),a
+                ld    a,(bank_cur)            ; save the Viewer's page
+                push  af
+                ld    a,(PIC_PAGE)
+                call  bank_set               ; map the picture bank at #4000
+                ld    hl,#3F00
+                ld    (fs_load_max),hl
+                ld    hl,#4000
+                ld    (fs_load_dst),hl
+                call  fs_load_file           ; load the opened file into the bank (#4000..)
+                jr    nc,kpo_fail            ; not found
+                ld    a,(#4000)              ; validate the "GBPC" magic
+                cp    'G'
+                jr    nz,kpo_fail
+                ld    a,(#4001)
+                cp    'B'
+                jr    nz,kpo_fail
+                ld    a,(#4002)
+                cp    'P'
+                jr    nz,kpo_fail
+                ld    a,(#4003)
+                cp    'C'
+                jr    nz,kpo_fail
+                ld    a,(#4004)              ; version: 2 = v2 (else v1), as the Viewer's parse_pic
+                cp    2
+                jr    nz,kpo_v1
+                ld    hl,(#4006)            ; v2: pic_wb = (width + 3) >> 2
+                inc   hl
+                inc   hl
+                inc   hl
+                srl   h
+                rr    l
+                srl   h
+                rr    l
+                ld    a,l
+                ld    (PIC_WB),a
+                ld    a,(#4008)             ; height (rows)
+                ld    (PIC_H),a
+                ld    a,14                   ; bitmap offset
+                ld    (PIC_OFF),a
+                jr    kpo_ok
+kpo_v1          ld    a,(#4004)             ; v1: byte width, then height, bitmap at +6
+                ld    (PIC_WB),a
+                ld    a,(#4005)
+                ld    (PIC_H),a
+                ld    a,6
+                ld    (PIC_OFF),a
+kpo_ok          pop   af                       ; restore the Viewer's page
+                call  bank_set
+                ld    a,1
+                ret
+kpo_fail        pop   af                       ; restore the Viewer's page, release the bank
+                call  bank_set
+                ld    a,(PIC_PAGE)
+                call  wm_free_page
+                xor   a
+                ld    (PIC_PAGE),a
+                ret
+
+; k_pic_blit (GB_PICBLIT): B=x C=y D=wbytes E=h HL=src_off. Map the picture bank and blit the
+; region (#4000+src_off ..) to the screen at (x,y) via restore_block, then restore the page.
+; The cursor is already down (the WM's cur_paintlock holds during the Viewer's on_draw).
+k_pic_blit
+                ld    a,b
+                ld    (sb_x),a
+                ld    a,c
+                ld    (sb_y),a
+                ld    a,d
+                ld    (sb_w),a
+                ld    a,e
+                ld    (sb_h),a
+                ld    bc,#4000
+                add   hl,bc                   ; HL = #4000 + src_off (in the bank window)
+                ld    (sb_buf),hl
+                ld    a,(bank_cur)
+                push  af
+                ld    a,(PIC_PAGE)
+                call  bank_set
+                call  restore_block          ; reads sb_buf (#4000..bank), writes the screen
+                pop   af
+                call  bank_set
+                ret
+
+; k_pic_close (GB_PICCLOSE): release the borrowed picture bank.
+k_pic_close
+                ld    a,(PIC_PAGE)
+                or    a
+                ret   z
+                call  wm_free_page
+                xor   a
+                ld    (PIC_PAGE),a
+                ret
+                endif
 
 ; app_pool_init (#84): build the app-page pool from the detected bank count
 ; (md_banks). Index 0..2 = bank 0 blocks 1..3 (#C5..#C7; block 0 is PAGE_DATA);

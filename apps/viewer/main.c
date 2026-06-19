@@ -61,11 +61,23 @@ static void render(unsigned int n)
 static unsigned char pic_wb, pic_h;
 static unsigned int  pic_off;
 static unsigned char rmin_w = MIN_W, rmin_h = MIN_H;   /* live resize floor (= picture size) */
+static unsigned char banked;                           /* 1 = the .PIC is in a borrowed bank (#164) */
+#define PIC_WB_K  (*(volatile unsigned char *)0x130C)  /* kernel-parsed header for the banked .PIC */
+#define PIC_H_K   (*(volatile unsigned char *)0x130D)
+#define PIC_OFF_K (*(volatile unsigned char *)0x130E)
 
 static unsigned char is_pic(void)
 {
     return (unsigned char)(filen >= 6 &&
         filebuf[0] == 'G' && filebuf[1] == 'B' && filebuf[2] == 'P' && filebuf[3] == 'C');
+}
+static unsigned char have_pic(void) { return (unsigned char)(banked || is_pic()); }
+
+/* the window can't shrink below the picture (the blit has no width clip). */
+static void pic_floor(void)
+{
+    rmin_w = (unsigned char)(pic_wb + 3); if (rmin_w < MIN_W) rmin_w = MIN_W;
+    rmin_h = (unsigned char)(pic_h + 16); if (rmin_h < MIN_H) rmin_h = MIN_H;
 }
 static void parse_pic(void)
 {
@@ -79,11 +91,35 @@ static void parse_pic(void)
         pic_h   = (unsigned char)filebuf[5];
         pic_off = 6;
     }
-    /* the window can't be shrunk below the picture (the blit has no width clip,
-       so a smaller window would let the image spill past the frame). */
-    rmin_w = (unsigned char)(pic_wb + 3); if (rmin_w < MIN_W) rmin_w = MIN_W;
-    rmin_h = (unsigned char)(pic_h + 16); if (rmin_h < MIN_H) rmin_h = MIN_H;
+    pic_floor();
 }
+
+/* load the opened file: a large .PIC into a borrowed bank (#164, kernels with the pic service),
+   else the in-page filebuf (text, or a small .PIC on plain GBIDE). */
+static void bank_or_parse(void)
+{
+    gb_pic_close();
+    banked = gb_pic_open();
+    if (banked) {                                  /* in a bank: read the kernel-parsed header */
+        pic_wb = PIC_WB_K; pic_h = PIC_H_K; pic_off = PIC_OFF_K;
+        pic_floor();
+        return;
+    }
+    filen = gb_fs_load(filebuf, VIEW_MAX);
+    if (is_pic()) parse_pic();
+    else { rmin_w = MIN_W; rmin_h = MIN_H; }
+}
+
+static void size_to_pic(void)   /* size the window to the picture, clamped on screen */
+{
+    unsigned char x = gb_wm_x(), y = gb_wm_y(), w, h;
+    w = (unsigned char)(pic_wb + 3); if (w < MIN_W) w = MIN_W;
+    if (w > (unsigned char)(80 - x))  w = (unsigned char)(80 - x);
+    h = (unsigned char)(pic_h + 16); if (h < MIN_H) h = MIN_H;
+    if (h > (unsigned char)(200 - y)) h = (unsigned char)(200 - y);
+    gb_wm_setsize(w, h);
+}
+
 static void draw_pic(void)
 {
     unsigned char x, y, h = pic_h;
@@ -96,6 +132,7 @@ static void draw_pic(void)
         x = (unsigned char)(win_x + 2);
         y = TX_Y0;
     }
+    if (banked) { gb_pic_blit(x, y, pic_wb, h, pic_off); return; }   /* blit h rows from the bank */
     if (pic_off + (unsigned int)pic_wb * h > filen) return;
     gb_restorerect(x, y, pic_wb, h, (unsigned char *)filebuf + pic_off);
 }
@@ -107,11 +144,11 @@ static void v_draw(void)
     if (*WM_FS) {                               /* true fullscreen: blue backdrop, centred image,
                                                    no chrome/grip (the WM drops the frame+title) */
         gb_fill(0, 0, 80, 200, 0);              /* pen 0 = desktop blue, whole screen */
-        if (loaded && is_pic()) draw_pic();     /* is_pic() already checks filen */
+        if (loaded && have_pic()) draw_pic();
         return;
     }
     if (!loaded)           ;   /* still loading, or empty/unreadable -> blank (render(0) is a no-op) */
-    else if (is_pic())     draw_pic();
+    else if (have_pic())   draw_pic();
     else                   render(filen);
     gb_draw_grip(win_x, win_y, win_w, win_h);   /* resize grip (#146) */
 }
@@ -122,23 +159,14 @@ static void v_frame(void)
 {
     if (!opened) {
         opened = 1;
-        if (is_pic()) {
-            unsigned char x = gb_wm_x(), y = gb_wm_y(), w, h;
-            w = (unsigned char)(pic_wb + 3);
-            if (w < MIN_W) w = MIN_W;
-            if (w > (unsigned char)(80 - x)) w = (unsigned char)(80 - x);
-            h = (unsigned char)(pic_h + 16);
-            if (h < MIN_H) h = MIN_H;
-            if (h > (unsigned char)(200 - y)) h = (unsigned char)(200 - y);
-            gb_wm_setsize(w, h);
-        }
+        if (have_pic()) size_to_pic();
         gb_restore_parent();          /* repaint at the new size */
         return;
     }
     if (gb_doc_frame()) gb_restore_parent();   /* a menu ran -> repaint */
 }
 
-static void v_close(void) { if (gb_doc_close()) gb_wm_close(); }
+static void v_close(void) { if (gb_doc_close()) { gb_pic_close(); gb_wm_close(); } }
 static void v_event(void) { gb_doc_event(); }
 
 /* on_drag: a title-bar press - move the window (#146 slice 2). */
@@ -178,13 +206,12 @@ static void v_fullscreen(unsigned char on)
                                       toggle changes the entire screen); v_draw does the paint */
 }
 
-/* on_open (File>Load): adopt the name, parse a picture, re-arm the resize. */
+/* on_open (File>Load): adopt the name, (re-)load via the bank-or-in-page path, re-arm resize. */
 static void v_open(unsigned int len)
 {
-    filen = len;
+    (void)len;                        /* bank_or_parse re-loads (gb_doc's filebuf load is for text) */
     fmt83(vtitle, gb_doc_name());
-    if (is_pic()) parse_pic();        /* sets the picture-sized resize floor */
-    else { rmin_w = MIN_W; rmin_h = MIN_H; }   /* text: back to the small floor */
+    bank_or_parse();
     opened = 0;                       /* the next frame sizes to the new picture */
 }
 
@@ -215,18 +242,10 @@ void main(void)
     gb_wm_managed(&vmw);             /* register + focus FIRST, but it does NOT draw yet (#146):
                                         now gb_fs_load/gb_doc target THIS window's launch file,
                                         and nothing is on screen while we do the slow load */
-    filen = gb_fs_load(filebuf, VIEW_MAX);   /* the file we were launched with */
+    bank_or_parse();                 /* load the launch file: banked .PIC (#164) or in-page */
     loaded = 1;
-    if (is_pic()) {                  /* size to the picture before the first paint */
-        unsigned char x = gb_wm_x(), y = gb_wm_y(), w, h;
-        parse_pic();
-        w = (unsigned char)(pic_wb + 3);
-        if (w < MIN_W) w = MIN_W;
-        if (w > (unsigned char)(80 - x)) w = (unsigned char)(80 - x);
-        h = (unsigned char)(pic_h + 16);
-        if (h < MIN_H) h = MIN_H;
-        if (h > (unsigned char)(200 - y)) h = (unsigned char)(200 - y);
-        gb_wm_setsize(w, h);
+    if (have_pic()) {                /* size to the picture before the first paint */
+        size_to_pic();
         opened = 1;                  /* already sized; v_frame's deferred resize is for File>Load */
     }
     gb_doc(&vdoc);                   /* menus + adopt the name for the title */

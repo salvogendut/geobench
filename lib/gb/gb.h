@@ -216,12 +216,16 @@ void gb_set_name(const char *name11);
  * space-padded 8.3, no dot) into dst - e.g. to show it in a title bar. */
 void gb_get_name(char *dst11);
 
-/* Draggable-window background repaint (issue #43). An app registers a full-repaint
- * handler (redraws its whole window/desktop, no input) with gb_on_repaint; when a
- * child app moves a window, it calls gb_restore_parent first, and the kernel runs
- * every ancestor's handler bottom-up to repaint what the window vacated, then the
- * child redraws its window on top. */
-void gb_on_repaint(void (*handler)(void));   /* register full-repaint handler */
+/* Banked picture buffer (#164, kernels with WM_GADGETS only). gb_pic_open loads the opened
+ * file into a borrowed app-pool bank so the Viewer can show a .PIC larger than its own 16K
+ * page; it returns 1 (header parsed: read PIC_WB/PIC_H/PIC_OFF at 0x130C-0x130E) or 0 (no
+ * free bank / not a .PIC / unsupported kernel) -> fall back to the in-page buffer. gb_pic_blit
+ * blits a wbytes x h region from offset src_off in the bank to the screen; gb_pic_close frees
+ * the bank. The cursor is handled by the WM during on_draw. */
+unsigned char gb_pic_open(void);
+void gb_pic_blit(unsigned char x, unsigned char y, unsigned char wbytes,
+                 unsigned char h, unsigned int src_off);
+void gb_pic_close(void);
 void gb_restore_parent(void);                /* repaint ancestor apps behind us */
 void gb_wm_damage(unsigned char x, unsigned char y,
                   unsigned char w, unsigned char h);  /* limit the next repaint to a rect (#153) */
@@ -291,7 +295,6 @@ unsigned char gb_in_grip(unsigned char x, unsigned char y, unsigned char w,
                          unsigned char h, unsigned char mx, unsigned char my);
 unsigned char gb_drag_resize(unsigned char x, unsigned char y, unsigned char *w,
                              unsigned char *h, unsigned char minw, unsigned char minh);
-void gb_wm_launch(void);              /* open current dir entry co-resident (+ arg) */
 /* gb_wm_launch_as: open app `app` (an 8.3 name) as a co-resident window, with the
  * current dir entry as its file arg (so a data file auto-opens). The File Manager
  * picks the app by file extension - the file-type routing that used to live in the

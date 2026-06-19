@@ -41,7 +41,9 @@
         .globl  _gb_menu
         .globl  _gb_set_name
         .globl  _gb_get_name
-        .globl  _gb_on_repaint
+        .globl  _gb_pic_open
+        .globl  _gb_pic_blit
+        .globl  _gb_pic_close
         .globl  _gb_restore_parent
         .globl  _gb_wm_damage
         .globl  _gb_wm_full
@@ -57,7 +59,6 @@
         .globl  _gb_wm_close
         .globl  _gb_wm_setpos
         .globl  _gb_wm_setsize
-        .globl  _gb_wm_launch
         .globl  _gb_wm_launch_as
         .globl  _gb_time
         .globl  _gb_exit
@@ -340,10 +341,27 @@ _gb_get_name:
         ldir
         ret
 
-;; void gb_on_repaint(void (*handler)(void));   handler in HL -> kernel stores it
-;; at this app's nesting slot, for repainting behind a moved window (#43)
-_gb_on_repaint:
-        jp      0x8054          ; GB_ONREPAINT
+;; unsigned char gb_pic_open(void);   #164: load the opened file into a borrowed bank + parse
+;; the .PIC header -> A=1 (PIC_WB/PIC_H/PIC_OFF set) or A=0 (no bank / not a pic -> in-page).
+_gb_pic_open:
+        jp      0x803c          ; GB_PICOPEN (was the dead GB_XORFRAME stub)
+;; void gb_pic_blit(u8 x, u8 y, u8 wbytes, u8 h, u16 src_off);   blit a region of the picture
+;; bank to the screen. Same arg shape as gb_restorerect, last word = src_off not a buffer.
+_gb_pic_blit:
+        ld      b, a
+        ld      c, l
+        pop     hl
+        ld      (sv_ret), hl
+        pop     hl              ; L=wbytes, H=h
+        ld      d, l
+        ld      e, h
+        pop     hl              ; src_off (16-bit)
+        call    0x8054          ; GB_PICBLIT (was the dead GB_ONREPAINT stub)
+        ld      hl, (sv_ret)
+        jp      (hl)
+;; void gb_pic_close(void);   release the borrowed picture bank.
+_gb_pic_close:
+        jp      0x8069          ; GB_PICCLOSE (was the dead GB_WMLAUNCH stub)
 
 ;; void gb_restore_parent(void);   repaint the ancestor apps behind the caller
 _gb_restore_parent:
@@ -415,10 +433,6 @@ _gb_wm_setpos:
 ;; (call after a resize-drag so click-to-focus + restack use the new size, #81).
 _gb_wm_setsize:
         jp      0x8099          ; GB_WMSETSIZE
-;; void gb_wm_launch(void);   open the current dir entry's app as a co-resident
-;; window with the file as its launch arg (the non-blocking gb_launch).
-_gb_wm_launch:
-        jp      0x8069          ; GB_WMLAUNCH
 ;; void gb_wm_launch_as(const char *app);   app (8.3 name) in HL -> open it as a
 ;; co-resident window with the current dir entry as its file arg (#70).
 _gb_wm_launch_as:
