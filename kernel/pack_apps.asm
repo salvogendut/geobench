@@ -18,7 +18,7 @@ xao_imgend
 ied_img         incbin "../build/ICONED.RAW"    ; packaged on the disk as ICONED.APP (moved
 ied_imgend                                      ; to pass 2 - the main image filled up, #142)
                 save  "ICONED.APP",ied_img,ied_imgend-ied_img,DSK,"build/gbkern.dsk"
-pen_img         incbin "../assets/penguin.PIC" ; sample 200x200 picture -> PENGUIN.PIC
+pen_img         incbin "../assets/pictures/PENGUIN.PIC" ; sample 200x200 picture -> PENGUIN.PIC
 pen_imgend
                 save  "PENGUIN.PIC",pen_img,pen_imgend-pen_img,DSK,"build/gbkern.dsk"
 ui_img          incbin "../build/GBUI.RAW"      ; paged dialog module -> GBUI.BIN (#142 step 1b)

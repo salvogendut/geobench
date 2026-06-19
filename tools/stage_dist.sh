@@ -41,4 +41,6 @@ for ist in assets/iconsets/*.IST; do          # tracked custom icon sets (edit w
     [ -e "$ist" ] && cp "$ist" "$SYS/"         # tools/iconedit.py); select via ICONS=<name>
 done
 cp assets/WELCOME.TXT "$SYS/"
-cp assets/penguin.PIC "$SYS/PENGUIN.PIC"   # sample 200x200 picture (view in Viewer)
+for pic in assets/pictures/*.PIC; do        # ship every .PIC in assets/pictures/ to the card
+    [ -e "$pic" ] && cp "$pic" "$SYS/"       # (PENGUIN.PIC + anything you add - view in the Viewer)
+done

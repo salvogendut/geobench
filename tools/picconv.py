@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""picconv - convert a PNG into a GEOBENCH .PIC (Mode-1, 4 colours).
+"""picconv - convert an image (PNG, JPG, ... any Pillow format) into a GEOBENCH .PIC
+(Mode-1, 4 colours).
 
 A tkinter GUI (like tools/iconedit.py) AND a CLI. It maps each pixel to the nearest
 of the four GEOBENCH desktop inks (blue / white / black / red), optionally with
@@ -16,7 +17,7 @@ Viewer shows:
 
 Usage:
     tools/picconv.py                         # launch the GUI
-    tools/picconv.py in.png out.PIC          # convert (CLI), Floyd-Steinberg
+    tools/picconv.py photo.jpg out.PIC       # convert (CLI), Floyd-Steinberg
     tools/picconv.py in.png out.PIC -d none -w 160
 """
 import sys
@@ -169,7 +170,8 @@ def run_gui(initial=None):
                 self.load(initial)
 
         def open_png(self):
-            p = filedialog.askopenfilename(filetypes=[("PNG", "*.png"), ("All", "*")])
+            p = filedialog.askopenfilename(filetypes=[
+                ("Images", "*.png *.jpg *.jpeg *.gif *.bmp"), ("All", "*")])
             if p:
                 self.load(p)
 
@@ -238,19 +240,19 @@ def main():
         return
     # CLI
     import argparse
-    p = argparse.ArgumentParser(description="Convert a PNG to a GEOBENCH .PIC.")
-    p.add_argument("in_png")
-    p.add_argument("out_pic", nargs="?", help="defaults to in.png -> in.PIC")
+    p = argparse.ArgumentParser(description="Convert an image (PNG/JPG/...) to a GEOBENCH .PIC.")
+    p.add_argument("in_img", help="source image (any format Pillow reads: PNG, JPG, GIF, BMP...)")
+    p.add_argument("out_pic", nargs="?", help="defaults to in.<ext> -> in.PIC")
     p.add_argument("-d", "--dither", choices=DITHERS, default="floyd")
     p.add_argument("-w", "--width", type=int, default=0, help="target width (snapped x4); 0 = source width")
     p.add_argument("--gui", action="store_true", help="open the GUI on this file")
     a = p.parse_args(args)
     if a.gui:
-        run_gui(a.in_png)
+        run_gui(a.in_img)
         return
-    out = a.out_pic or os.path.splitext(a.in_png)[0] + ".PIC"
-    w, h = convert_file(a.in_png, out, a.dither, a.width)
-    print(f"{a.in_png}: {w}x{h} -> {out}  ({a.dither}, {w // 4 * h + 14} bytes)")
+    out = a.out_pic or os.path.splitext(a.in_img)[0] + ".PIC"
+    w, h = convert_file(a.in_img, out, a.dither, a.width)
+    print(f"{a.in_img}: {w}x{h} -> {out}  ({a.dither}, {w // 4 * h + 14} bytes)")
 
 
 if __name__ == "__main__":
