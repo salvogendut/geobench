@@ -1114,7 +1114,12 @@ k_pic_open
                 ld    (fs_load_max),hl
                 ld    hl,#4000
                 ld    (fs_load_dst),hl
+                call  focus_arg_ptr          ; fs_req_name = the focused window's file arg (as
+                ld    de,fs_req_name         ; k_fsload does - else fs_load_file loads a stale name)
+                call  copy11
+                di
                 call  fs_load_file           ; load the opened file into the bank (#4000..)
+                ei
                 jr    nc,kpo_fail            ; not found
                 ld    a,(#4000)              ; validate the "GBPC" magic
                 cp    'G'
