@@ -42,7 +42,15 @@ static void relayout(void)
     unsigned char avail = (unsigned char)(dy - 2 - top);         /* face height band */
     unsigned char rw    = (unsigned char)(win_w * 2 - 6);        /* radius bound: width  */
     unsigned char rh    = (unsigned char)(avail / 2 - 2);        /* radius bound: height */
+#ifdef GB_MSX2
+    /* rr is the vertical radius; the face is stretched 9/5 horizontally (see px_at),
+       so the width budget rw admits a vertical radius of only rw*5/9. Bounding by
+       that (not rw) is what lets a horizontal resize grow the face on Screen 6. */
+    { unsigned char rwv = (unsigned char)((unsigned int)rw * 5 / 9);
+      rr = (rwv < rh) ? rwv : rh; }
+#else
     rr = (rw < rh) ? rw : rh;
+#endif
     cx = win_x * 4 + win_w * 2;
     cy = top + avail / 2;
     tick_in = (unsigned char)((unsigned int)rr * 37 / 44);       /* keep proportions */
@@ -151,7 +159,14 @@ static unsigned char tobcd(unsigned char v)
 
 /* --- drawing ----------------------------------------------------------------- */
 
+/* rr is the VERTICAL radius (in lines). On MSX2 Screen 6 a screen pixel is ~half
+   as wide as a line is tall, so the horizontal radius is stretched ~9/5 to keep
+   the face round; on the CPC x and y are the same (byte-identical to before). */
+#ifdef GB_MSX2
+static int px_at(unsigned char pos, unsigned char rad) { return cx + ((int)SIN64[pos] * rad / 64) * 9 / 5; }
+#else
 static int px_at(unsigned char pos, unsigned char rad) { return cx + (int)SIN64[pos] * rad / 64; }
+#endif
 static int py_at(unsigned char pos, unsigned char rad) { return cy - (int)COS64[pos] * rad / 64; }
 
 static void hand(unsigned char pos, unsigned char len, unsigned char pen)
