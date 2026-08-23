@@ -33,6 +33,10 @@
 
 #define UI_WIDTH  (*(volatile unsigned int *)0x1708)
 #define UI_HEIGHT (*(volatile unsigned int *)0x170A)
+#define KCFG_MEMSTR ((const char *)0x121A)
+
+#define ABOUT_W 60
+#define ABOUT_H 62
 
 #ifndef GB_VERSION
 #define GB_VERSION "unknown"
@@ -197,12 +201,14 @@ static void about_dialog(void)
     unsigned char x = UI_COL, y = UI_LINE;
 
     gb_curhide();
-    gb_fill(x, y, 60, 50, 1);
-    gb_frame(x, y, 60, 50, 2);
+    gb_fill(x, y, ABOUT_W, ABOUT_H, 1);
+    gb_frame(x, y, ABOUT_W, ABOUT_H, 2);
     gb_textbw((unsigned char)(x + 3), (unsigned char)(y + 5), about_title);
     gb_textbw((unsigned char)(x + 3), (unsigned char)(y + 17), about_build);
+    gb_textbw((unsigned char)(x + 3), (unsigned char)(y + 29), "RAM:");
+    gb_textbw((unsigned char)(x + 10), (unsigned char)(y + 29), KCFG_MEMSTR);
     gb_curshow();
-    gb_popup((unsigned char)(x + 23), (unsigned char)(y + 30), about_buttons, 1);
+    gb_popup((unsigned char)(x + 23), (unsigned char)(y + 42), about_buttons, 1);
 }
 
 static void browser_to_83(const char *src)

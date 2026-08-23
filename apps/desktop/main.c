@@ -1095,7 +1095,7 @@ static void on_frame(void)
         want_about = 0;
         UI_OP_K = 24;
         UI_COL_K = (GB_COLS - 60) / 2;
-        UI_LINE_K = (GB_LINES - 50) / 2;
+        UI_LINE_K = (GB_LINES - 62) / 2;
         gb_ui();
         repaint_stack();                  /* erase the transient box and restore every window */
         return;
