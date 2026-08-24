@@ -13,12 +13,6 @@ xmx_imgend
 xmc_img         incbin "../build/XMATRIXCFG.RAW" ; same-stem Configure companion
 xmc_imgend
                 save  "XMATRIX.MOD",xmc_img,xmc_imgend-xmc_img,DSK,"build/companion.dsk"
-mtn_img         incbin "../build/MOUNTAIN.RAW"  ; isometric terrain
-mtn_imgend
-                save  "MOUNTAIN.SAV",mtn_img,mtn_imgend-mtn_img,DSK,"build/companion.dsk"
-mtc_img         incbin "../build/MOUNTAINCFG.RAW" ; same-stem Configure companion
-mtc_imgend
-                save  "MOUNTAIN.MOD",mtc_img,mtc_imgend-mtc_img,DSK,"build/companion.dsk"
 stf_img         incbin "../build/STARFLD.RAW"   ; 3D star-field
 stf_imgend
                 save  "STARFLD.SAV",stf_img,stf_imgend-stf_img,DSK,"build/companion.dsk"

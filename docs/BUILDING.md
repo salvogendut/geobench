@@ -63,13 +63,14 @@ can test or deploy without rebuilding first):
 - **`QA/CPC/Floppies/GEOBENCH.DSK`** — the bootable **Main** floppy image.
 - **`QA/CPC/Floppies/COMPANION.DSK`** — the **Companion** floppy with the larger apps
   (including Telnet, WGET, Browser, Shell, Mahjong and Calculator) and extra savers for drive B.
-  Browser's `BRSAVE.APP` worker, Paint's `PAINT.IST` tool set, and the optional
-  `HAND.SPR` cursor are kept beside those apps. Configurable savers carry their
-  same-stem Configure companions (`XMATRIX.MOD`, `STARFLD.MOD`,
-  `MOUNTAIN.MOD`) on this disk;
-  shared `GBWEB.MOD`/`GBIMG.MOD` modules remain on Main.
+  Browser's `BRSAVE.APP` worker and `GBIMG.MOD` renderer, Paint's `PAINT.IST`
+  tool set, and the optional `HAND.SPR` cursor are kept beside those apps.
+  Configurable savers carry their
+  same-stem Configure companions (`XMATRIX.MOD`, `STARFLD.MOD`) on this disk;
+  the shared `GBWEB.MOD` module remains on Main.
 - **`QA/CPC/Floppies/EXTRAS.DSK`** — the complete `.PIC` gallery plus
-  `DISKUTIL.APP`, `XROACH.SAV`, `CATCLK.SAV`, `HELIX.SAV`, and `WELCOME.TXT` on an extended 80-track,
+  `DISKUTIL.APP`, `XROACH.SAV`, `CATCLK.SAV`, `HELIX.SAV`, `MOUNTAIN.SAV`,
+  `MOUNTAIN.MOD`, and `WELCOME.TXT` on an extended 80-track,
   single-sided AMSDOS DATA disk. Its files
   retain AMSDOS headers and multi-extent
   layout, so the existing chunked picture reader can open the larger images. A

@@ -51,6 +51,17 @@
 #define GB_HTML_FORM_OPEN  1
 #define GB_HTML_FORM_INPUT 2
 
+#ifndef GB_HTML_TABLE_OPEN
+#define GB_HTML_TABLE_OPEN   0
+#define GB_HTML_TABLE_CLOSE  1
+#define GB_HTML_ROW_OPEN     2
+#define GB_HTML_ROW_CLOSE    3
+#define GB_HTML_CELL_OPEN    4
+#define GB_HTML_CELL_CLOSE   5
+#define GB_HTML_HEADER_OPEN  6
+#define GB_HTML_HEADER_CLOSE 7
+#endif
+
 #ifndef GB_HTML_EXTERNAL_STORAGE
 static char gb_html_tag_buffer[GB_HTML_TAG_MAX + 1];
 static char gb_html_url_buffer[GB_HTML_URL_MAX + 1];
@@ -291,6 +302,20 @@ static unsigned char gb_html_block_tag(const char *name, unsigned char len)
                            name[1] >= '1' && name[1] <= '6');
 }
 
+#ifdef GB_HTML_TABLE_TAG
+static unsigned char gb_html_table_kind(const char *name, unsigned char len)
+{
+    unsigned char second;
+    if (len == 5 && gb_html_equal(name, len, "table")) return GB_HTML_TABLE_OPEN;
+    if (len != 2 || gb_html_lower((unsigned char)name[0]) != 't') return 0xFF;
+    second = gb_html_lower((unsigned char)name[1]);
+    if (second == 'r') return GB_HTML_ROW_OPEN;
+    if (second == 'd') return GB_HTML_CELL_OPEN;
+    if (second == 'h') return GB_HTML_HEADER_OPEN;
+    return 0xFF;
+}
+#endif
+
 #if !defined(GB_HTML_NO_IMAGE_ALT) && !defined(GB_HTML_IMAGE)
 static void gb_html_emit_alt(const char *value)
 {
@@ -310,6 +335,9 @@ static void gb_html_process_tag(void)
 #ifdef GB_HTML_IMAGE
     unsigned char src_attr;
 #endif
+#ifdef GB_HTML_TABLE_TAG
+    unsigned char table_kind;
+#endif
     while (i < gb_html_tag_len &&
            gb_html_space((unsigned char)gb_html_tag_buffer[i])) i++;
     if (i < gb_html_tag_len && gb_html_tag_buffer[i] == '/') { end = 1; i++; }
@@ -325,6 +353,15 @@ static void gb_html_process_tag(void)
         while (tail && gb_html_space((unsigned char)gb_html_tag_buffer[tail - 1])) tail--;
         if (tail && gb_html_tag_buffer[tail - 1] == '/') self_close = 1;
     }
+
+#ifdef GB_HTML_TABLE_TAG
+    table_kind = gb_html_table_kind(gb_html_tag_buffer + name, len);
+    if (table_kind != 0xFF) {
+        GB_HTML_TABLE_TAG((unsigned char)(table_kind + end), i);
+        if (self_close && !end) GB_HTML_TABLE_TAG((unsigned char)(table_kind + 1), i);
+        return;
+    }
+#endif
 
     if (end) {
         if (gb_html_equal(gb_html_tag_buffer + name, len, "a") && gb_html_in_link) {

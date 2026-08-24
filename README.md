@@ -36,8 +36,8 @@ DOS (AMSDOS / UniDOS / MSX-DOS 2), not a replacement OS — smaller scope than
 The desktop, file tools and graphical Shell build for all targets from the same
 source tree. CPC and PCW ship the complete network app set; Browser and Telnet
 also build for MSX2 through TCP/IP UNAPI. The streaming HTTP browser supports
-links, GET search forms, and proxy-converted inline pictures; PCW networking
-uses PerryFi/PerryNet.
+links, GET search forms, bounded simple tables, and proxy-converted inline
+pictures; PCW networking uses PerryFi/PerryNet.
 
 <p align="center">
   <img src="screenshots/CPC-Browser.gif" alt="GEOBENCH Browser showing FrogFind, Google, Ask, and Lycos on the Amstrad CPC" width="48%">
@@ -130,6 +130,11 @@ hardware, or use the disk images in an emulator.
 The optional [GB-proxy](https://github.com/salvogendut/GB-proxy) companion makes
 modern HTTPS pages practical for the CPC, MSX2, and PCW Browser. It simplifies HTML,
 shortens destination URLs, and converts web images into bounded GBPC pictures.
+Browser retains simple table rows from that HTML and lays them out as a compact
+grid: up to three columns on MSX2, or two on CPC and PCW with wider rows
+reflowed. Text and linked pictures inside cells remain clickable; CSS table
+layout, spanning cells, and nested-table geometry are intentionally outside the
+bounded renderer.
 The MSX2 Browser advertises sixteen-colour mode-7 support when GEOBENCH is
 running in Screen 7 and can reserve the extra image page; every other case
 continues to request the portable four-colour mode:

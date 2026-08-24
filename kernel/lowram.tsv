@@ -50,7 +50,7 @@ base          0x2200  0x3DFF  module_data_buffer      module_data   GBFAT/FLOPPY
 base          0x2200  0x2872  browser_pcw_transient   module_data   PCW Browser transport, protocol, render, and fallback buffers
 base          0x2900  0x32FF  browser_source_buffers  module_data   Browser offline-read buffer and 2-KiB source-cache staging block
 base          0x3300  0x3887  browser_transient       module_data   Browser protocol, render, and fallback buffers; above GBNET max I/O
-base          0x3900  0x3ADF  browser_shared_state    module_data   Browser/GBUI/GBWEB/GBIMG cache, proxy, GET-form, request, resource, image page/mode/stride, live screen mode, viewport, and error state
+base          0x3900  0x3AE6  browser_shared_state    module_data   Browser/GBUI/GBWEB/GBIMG cache, proxy, GET-form, request, resource, image/table scan/retry, live screen mode, viewport, and error state
 base          0x3E00  0x3FFF  clipboard               -             shared clipboard length and data
 
 msx           0x1291  0x1295  msx_picture_state       msx_pic_cursor third/fourth picture banks, packing mode, and source stride

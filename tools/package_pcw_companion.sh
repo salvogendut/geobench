@@ -21,6 +21,7 @@ python3 tools/mkpcwdsk.py "$OUT" \
     --add build/pcw/SNDTEST.RAW=SNDTEST.APP \
     --add build/pcw/WGET.RAW=WGET.APP \
     --add build/pcw/BROWSER.RAW=BROWSER.APP \
+    --add build/GBIMG.RAW=GBIMG.MOD \
     --add build/pcw/XAOS.RAW=XAOS.APP \
     --add build/pcw/MAHJONG.RAW=MAHJONG.APP \
     --add build/pcw/CALC.RAW=CALC.APP \

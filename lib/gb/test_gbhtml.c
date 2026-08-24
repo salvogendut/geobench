@@ -11,6 +11,8 @@ static unsigned int visible_len, title_len;
 static unsigned int link_begin_count, link_end_count;
 static unsigned int image_count;
 static unsigned int form_count, input_count, form_close_count;
+static unsigned char table_events[32];
+static unsigned char table_event_count;
 
 static void emit_text(unsigned char c);
 static void emit_title(unsigned char c);
@@ -20,6 +22,7 @@ static void link_end(void);
 static void image_alt(const char *alt);
 static void image(const char *src, const char *alt);
 static void form_tag(unsigned char kind, unsigned char attr_start);
+static void table_tag(unsigned char kind, unsigned char attr_start);
 
 #define GB_HTML_EMIT_TEXT(c) emit_text(c)
 #define GB_HTML_EMIT_TITLE(c) emit_title(c)
@@ -29,6 +32,7 @@ static void form_tag(unsigned char kind, unsigned char attr_start);
 #define GB_HTML_IMAGE_ALT(alt) image_alt(alt)
 #define GB_HTML_IMAGE(src, alt) image(src, alt)
 #define GB_HTML_FORM_TAG(kind, attrs) form_tag(kind, attrs)
+#define GB_HTML_TABLE_TAG(kind, attrs) table_tag(kind, attrs)
 #include "gbhtml.h"
 
 static int failures;
@@ -93,12 +97,20 @@ static void form_tag(unsigned char kind, unsigned char attr_start)
     } else if (kind == GB_HTML_FORM_CLOSE) form_close_count++;
 }
 
+static void table_tag(unsigned char kind, unsigned char attr_start)
+{
+    (void)attr_start;
+    if (table_event_count < sizeof(table_events))
+        table_events[table_event_count++] = kind;
+}
+
 static void capture_reset(void)
 {
     visible_len = title_len = 0;
     link_begin_count = link_end_count = 0;
     image_count = 0;
     form_count = input_count = form_close_count = 0;
+    table_event_count = 0;
     visible[0] = title[0] = link_url[0] = image_src[0] = 0;
     form_attrs[0] = first_input_attrs[0] = second_input_attrs[0] = 0;
     gb_html_reset();
@@ -212,6 +224,23 @@ static void test_form_tags(void)
           "raw form callbacks remain stable across chunk boundaries");
 }
 
+static void test_table_tags(void)
+{
+    static const unsigned char expected[] = {
+        GB_HTML_TABLE_OPEN, GB_HTML_ROW_OPEN,
+        GB_HTML_HEADER_OPEN, GB_HTML_HEADER_CLOSE,
+        GB_HTML_CELL_OPEN, GB_HTML_CELL_CLOSE,
+        GB_HTML_ROW_CLOSE, GB_HTML_TABLE_CLOSE
+    };
+    capture_reset();
+    feed_chunks("<table><tbody><tr><th>A</th><td>B</td></tr></tbody></table>", 1);
+    capture_end();
+    check(table_event_count == sizeof(expected) &&
+              !memcmp(table_events, expected, sizeof(expected)) &&
+              !strcmp(visible, "AB"),
+          "table, row and cell callbacks stream across chunk boundaries");
+}
+
 static void test_arbitrary_bytes(void)
 {
     unsigned long seed = 0x1984UL;
@@ -235,6 +264,7 @@ int main(void)
     test_attribute_boundaries();
     test_bounds_and_recovery();
     test_form_tags();
+    test_table_tags();
     test_arbitrary_bytes();
     if (failures) {
         printf("\n%d HTML test(s) FAILED\n", failures);

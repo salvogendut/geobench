@@ -8,7 +8,7 @@
 ;; Companion is meant for drive B (Main stays in A); the kernel app/module loader now
 ;; tries the boot drive (A) first, then falls back to the browse drive (B), so a
 ;; Companion app loads from B while shared modules (GBUI.MOD/GBNET.MOD) load from
-;; A. PAINT.IST stays beside PAINT.APP on this disk.
+;; A. Browser's private GBIMG.MOD and PAINT.IST stay beside their apps here.
 ;;
 ;; Like pack_apps*.asm: each of five passes is a fresh 64K rasm image whose `save ...,DSK,...`
 ;; APPENDS to the same .dsk; pass 1 here CREATES build/companion.dsk (build_kernel.sh

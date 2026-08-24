@@ -29,7 +29,7 @@ focused window's handlers (issue #45).
 | formref  | `FORMREF.APP`  | development reference for app-linked form composition and the first `GBAP` embedded application icon, using the Daruma artwork |
 | sndtest  | `SNDTEST.APP`  | non-blocking app-linked sound diagnostic: PSG scale/noise on CPC/MSX2 and DKsound-equipped PCWs, with stock-PCW beeper fallback |
 | wget     | `WGET.APP`     | GUI HTTP downloader with bounded redirects and streamed writes to an automatically derived 8.3 filename; CPC continues exact-length partial files with HTTP Range, while PCW uses PerryNet and safely restarts CP/M-record files |
-| browser  | `BROWSER.APP`  | fullscreen HTTP browser for CPC, MSX2, and PCW; demand-streams into a bounded borrowed-bank cache, renders compact GET forms and one lazy-loaded GBPC image, hides proxy targets behind highlighted link labels, and loads/saves offline `.HTM` files without retaining a DOM |
+| browser  | `BROWSER.APP`  | fullscreen HTTP browser for CPC, MSX2, and PCW; demand-streams into a bounded borrowed-bank cache, renders compact GET forms, simple table grids, and sequential lazy GBPC images through one image slot, hides proxy targets behind highlighted link labels, and loads/saves offline `.HTM` files without retaining a DOM |
 | brsave   | `BRSAVE.APP`   | transient Browser helper that writes captured HTML source to an `.HTM` file without displacing the Browser bank |
 | shell    | `SHELL.APP`    | fullscreen command shell with `ls`, `cd`, `pwd`, `cat`, `cp`, `rm`, `clear`, `help`, and `exit`; supports A/B/C paths and streamed arbitrary-size file copies |
 | timesync | `TIMESYNC.APP` | PCW desktop helper — reads PerryNet's firmware clock with `TIME_GET` when `TIMESYNC=true`, then applies `TIMEZONE=+/-H` |

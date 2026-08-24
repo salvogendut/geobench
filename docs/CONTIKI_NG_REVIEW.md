@@ -133,9 +133,11 @@ including compact GET-form and inline-image records, and pauses its TCP
 stream after laying out one viewport, and resumes from retained receive-buffer
 state only as the user scrolls down. It follows bounded redirects, opens
 underlined link labels by click, and retains one refetched Back URL. Link targets
-are stored separately so proxy transport URLs stay out of rendered text. One
-visible image at a time is fetched lazily as a bounded GBPC v2 object; a proxy
-can convert ordinary image formats. The Browser build disables numeric-entity
+are stored separately so proxy transport URLs stay out of rendered text. Simple
+table rows become compact two- or three-column records whose text and images
+remain clickable. Visible images are fetched sequentially through one bounded
+GBPC v2 slot and drawn directly; a proxy can convert ordinary image formats.
+The Browser build disables numeric-entity
 and attribute-entity decoding to remain within its 16K PCW bank. Reaching the
 row bound is reported as truncated; no-spare-bank systems use an explicit
 seven-line fallback.

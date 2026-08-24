@@ -135,7 +135,7 @@ DATA_LOC=0x7000 NET=1 tools/build_capp.sh apps/nettest build/NETTEST.RAW # NETTE
 APP_ICON=apps/formref/icon.asm APP_ICON16=apps/formref/icon16.asm DATA_LOC=0x6200 WIDGETS=1 STEPPER=1 SELECTOR=1 ACTIONS=1 FORM=1 FORM_SELECT=1 tools/build_capp.sh apps/formref build/FORMREF.RAW # FORMREF (#420/#424/#426/#428): compact action diagnostic + dual embedded APP icon reference
 DATA_LOC=0x6200 BUTTON=1 SOUND=1 tools/build_capp.sh apps/sndtest build/SNDTEST.RAW # SNDTEST (#452): app-linked PSG/beeper diagnostic; zero resident kernel bytes
 DATA_LOC=0x7A50 DIALOGS=1 WIDGETS=1 NET=1 tools/build_capp.sh apps/wget build/WGET.RAW # WGET (#363/#367): streaming HTTP downloader with redirects + CPC resume
-APP_ICON=apps/browser/icon.asm GBWIN=0 GBLIB_SRC=lib/gb/gblib_browser.s APP_CFLAGS="--max-allocs-per-node 100000" DATA_LOC=0x7E00 NET=1 tools/build_capp.sh apps/browser build/BROWSER.RAW # BROWSER (#367/#371/#373): demand stream + offline/proxy/GET-form support
+APP_ICON=apps/browser/icon.asm GBWIN=0 GBLIB_SRC=lib/gb/gblib_browser.s APP_CFLAGS="--max-allocs-per-node 100000" DATA_LOC=0x7E00 NET=1 tools/build_capp.sh apps/browser build/BROWSER.RAW # BROWSER (#367/#371/#373/#476): demand stream + offline/proxy/GET-form/table support
 DATA_LOC=0x6200 tools/build_capp.sh apps/brsave build/BRSAVE.RAW # transient Browser .HTM source writer
 APP_ICON=apps/shell/icon.asm DATA_LOC=0x6D00 SCROLL=1 tools/build_capp.sh apps/shell build/SHELL.RAW # SHELL (#365): portable command shell with streamed cat/cp
 APP_ICON=apps/mahjong/icon.asm DATA_LOC=0x7100 DIALOGS=1 tools/build_capp.sh apps/mahjong build/MAHJONG.RAW # Kana Mahjong: solvable 144-tile Turtle game
@@ -264,6 +264,8 @@ EXTRAS_ADDS=(
     --add build/XROACH.RAW=XROACH.SAV
     --add build/CATCLK.RAW=CATCLK.SAV
     --add build/HELIX.RAW=HELIX.SAV
+    --add build/MOUNTAIN.RAW=MOUNTAIN.SAV
+    --add build/MOUNTAINCFG.RAW=MOUNTAIN.MOD
 )
 for tbr in build/titlebars/*.TBR; do
     case "$(basename "$tbr")" in
@@ -281,7 +283,7 @@ while IFS= read -r pic; do
     EXTRAS_ADDS+=(--add "$pic")
 done < <(python3 tools/picture_catalog.py portable)
 python3 tools/mkcpcmedia.py "$FLOPPY_QA/EXTRAS.DSK" "${EXTRAS_ADDS[@]}"
-echo "  + $FLOPPY_QA/EXTRAS.DSK (picture gallery + secondary title/gadget themes + Disk Utility + XROACH/CATCLK/HELIX savers + WELCOME.TXT; extended 80-track AMSDOS data disk)"
+echo "  + $FLOPPY_QA/EXTRAS.DSK (picture gallery + secondary title/gadget themes + Disk Utility + XROACH/CATCLK/HELIX/MOUNTAIN savers + WELCOME.TXT; extended 80-track AMSDOS data disk)"
 echo "Building GB-BASIC CPC payload from $GB_BASIC_DIR"
 mkdir -p "$GB_BASIC_DIR/build" "$GB_BASIC_DIR/build/basic"
 make -C "$GB_BASIC_DIR" raws GEOBENCH="$GEOBENCH_ROOT"

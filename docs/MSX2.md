@@ -183,7 +183,10 @@ existing Nextor installation, copy `UNAPINET.COM` to the boot drive and run it
 before `GBMSX.COM`; another compatible mapped-RAM or page-3 TCP/IP UNAPI
 implementation may be used instead. Browser and Telnet report a
 network-initialisation error when discovery fails. Browser currently supports
-plain HTTP only.
+plain HTTP only. Its bounded HTML subset includes simple tables: up to three
+cells are shown across a centered row, wider source rows reflow, and linked cell
+images remain clickable. It does not implement CSS table layout or spanning
+cells.
 
 When Browser starts under Screen 7, it reads the live BIOS `SCRMOD` work-area
 byte and tries to reserve a second app-pool page in addition to its normal

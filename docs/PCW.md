@@ -121,11 +121,12 @@ directory layout. `k_drive_poll` uses a single-sector probe for media presence.
 - **GEOBENCH.DSK** (bootable): kernel + DESKTOP, FILEMGR, NOTEPAD,
   SETTINGS, VIEWER, CLOCK, TIMESYNC, ICONED, SHELL + the portable savers
   (`SQUARES`, the default) + fonts, icon sets, pointer, splash, Browser's
-  `GBWEB.MOD`/`GBIMG.MOD`/`BRSAVE.APP` helpers, `LOGO.PIC` (default wallpaper),
+  shared `GBWEB.MOD` helper, `LOGO.PIC` (default wallpaper),
   GEOBENCH.CFG. No other picture is included.
 - **COMPANION.DSK** (CF2 data): backdrop tiles,
   TELNET.APP (PerryNet/PerryFi plus serial), NETTEST.APP (PerryNet/PerryFi),
-  WGET.APP and BROWSER.APP (HTTP over PerryNet), XAOS.APP, MAHJONG.APP,
+  WGET.APP and BROWSER.APP with its private `GBIMG.MOD` renderer (HTTP over
+  PerryNet), XAOS.APP, MAHJONG.APP,
   CALC.APP, FORMREF.APP, SNDTEST.APP,
   WELCOME.TXT.
 - **EXTRAS.DSK** (720K CF2DD data): every portable picture from
@@ -177,14 +178,16 @@ to four absolute or relative redirects and keeps an interrupted partial file. A
 later PCW attempt restarts that file rather than sending Range: CP/M records
 only retain a 128-byte-granular size, so an exact resume offset cannot be
 reconstructed safely. Browser follows redirects too, parses chunked HTML bodies,
-renders text, links, compact GET forms, and image records into a borrowed 16K
-page holding up to 208 fixed-width rows. It renders one viewport, pauses the open PerryNet TCP stream,
+renders text, links, compact GET forms, image records, and bounded simple tables
+into a borrowed 16K page holding up to 208 fixed-width rows. Tables use a
+centered two-column grid and reflow wider source rows; linked cell images remain
+clickable. It renders one viewport, pauses the open PerryNet TCP stream,
 and resumes from the retained receive byte as the user scrolls down; cached lines
 remain available for upward scrolling. The proportional scrollbar shows that
 continuation is available, and reaching the line bound is reported as truncated.
 Underlined link labels open their separately retained destination when clicked,
-so proxy transport URLs do not appear as page text. Browser fetches the visible
-image lazily into one bounded GBPC v2 slot and reuses that slot after scrolling;
+so proxy transport URLs do not appear as page text. Browser fetches visible
+images sequentially through one bounded GBPC v2 slot and reuses that slot after scrolling;
 the proxy performs conversion of ordinary web images. One previous URL is
 retained for Back. Its File menu loads and saves offline `.HTM` files, and File Manager opens
 those files in Browser with the text-file icon. The Settings menu persists an

@@ -207,19 +207,22 @@ the level of asset reload, storage, and window-manager primitives.
   backdrops. Built by `kernel/gbkern.asm` + `pack_apps{,2,3}.asm` (#250).
 - **`QA/CPC/Floppies/COMPANION.DSK`** — the **Companion** floppy (#250): a non-bootable DATA disk with
   the extras — Paint, Telnet, WGET, Browser, Shell, Mahjong, Xaos, Calculator,
-  and the extra screensavers except `XROACH.SAV`, `CATCLK.SAV`, and `HELIX.SAV`,
+  and the extra screensavers except `XROACH.SAV`, `CATCLK.SAV`, `HELIX.SAV`, and
+  `MOUNTAIN.SAV` with its same-stem configuration module,
   which are kept on Extras to leave enough CF2 blocks for Calculator and
   same-stem saver configuration modules.
   Built by `kernel/pack_comp{1,2,3,4,5}.asm`. It is meant for **drive B** while the Main floppy
   stays in drive A: the kernel's system loader (`fs_load_sys`, `lib/fs.asm`) tries the boot
   drive (A) first and **falls back to the browse drive** (B), so a Companion app launched
   from a drive-B File Manager loads from B. `BRSAVE.APP` and optional `HAND.SPR`
-  live beside the Companion apps; shared dependencies (`GBUI.MOD`, `GBAPICK.MOD`,
-  `GBWEB.MOD`, `GBIMG.MOD`, `GBNET.MOD`, `PAINT.IST`) load from A. (Card
+  and Browser's private `GBIMG.MOD` live beside the Companion apps; shared
+  dependencies (`GBUI.MOD`, `GBAPICK.MOD`, `GBWEB.MOD`, `GBNET.MOD`) load from
+  A, while `PAINT.IST` stays beside Paint. (Card
   builds are unaffected — they already ship everything on one volume, including
   `GBNET.MOD` for Net4CPC and `GBNETM4.MOD` for M4 TCP.)
 - **`QA/CPC/Floppies/EXTRAS.DSK`** — all tracked pictures, including `LOGO.PIC`,
-  plus `XROACH.SAV`, `CATCLK.SAV`, and `HELIX.SAV`, on an extended 80-track single-sided
+  plus `XROACH.SAV`, `CATCLK.SAV`, `HELIX.SAV`, and `MOUNTAIN.SAV` with
+  `MOUNTAIN.MOD`, on an extended 80-track single-sided
   AMSDOS DATA image built by `tools/mkcpcmedia.py`. The
   normal Main and Companion CF2 images contain no other `.PIC` files.
 

@@ -133,7 +133,6 @@ python3 tools/mkpcwdsk.py QA/PCW/GEOBENCH.DSK \
     --add build/GBUI.RAW=GBUI.MOD \
     --add build/pcw/GBAPICK.RAW=GBAPICK.MOD \
     --add build/GBWEB.RAW=GBWEB.MOD \
-    --add build/GBIMG.RAW=GBIMG.MOD \
     --add build/pcw/SPLASH.MOD=SPLASH.MOD \
     --add build/pcw/GBTITLE.RAW=GBTITLE.MOD \
     --add build/pcw/DEFAULT.FNT=DEFAULT.FNT \
