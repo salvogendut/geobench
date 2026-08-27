@@ -4,6 +4,7 @@
  * op 6/7/9. The kernel dispatches those non-visual operations here, keeping the
  * already-full Browser application bank small. */
 #include "gb.h"
+#include "gbbrowser.h"
 
 #define UI_OP          (*(volatile unsigned char *)0x1700)
 #define UI_N           (*(volatile unsigned char *)0x1703)
@@ -37,6 +38,7 @@
 #define BUI_SOURCE_FULL 0x01
 #define BUI_PROXY_ON   0x08
 #define BUI_LOCAL_EOF  0x20
+#define BUI_DOX_MODE   0x40
 #define BUI_LOCAL_BUF  ((char *)0x2900)
 #define BUI_URL_BASE   ((char *)0x2900)
 #define BUI_URL_LINK   ((char *)0x2960)
@@ -86,6 +88,19 @@ static unsigned char alloc_page(void)
     return 0;
 }
 
+static void reset_image_cache(void)
+{
+    unsigned char i;
+    BUI_IMAGE_CACHE_TAIL = BUI_IMAGE_DATA_OFF = BUI_IMAGE_EXPECTED = 0;
+    BUI_IMAGE_CACHE_NEXT = 0;
+    for (i = 0; i < BROWSER_IMAGE_CACHE_MAX; i++) {
+        BUI_IMAGE_CACHE_META[(unsigned char)(i * BROWSER_IMAGE_CACHE_ENTRY_SIZE)] =
+            (unsigned char)BROWSER_INVALID_OFFSET;
+        BUI_IMAGE_CACHE_META[(unsigned char)(i * BROWSER_IMAGE_CACHE_ENTRY_SIZE + 1)] =
+            (unsigned char)(BROWSER_INVALID_OFFSET >> 8);
+    }
+}
+
 static void source_put(void)
 {
     unsigned char page;
@@ -95,10 +110,9 @@ static void source_put(void)
     while (left) {
         if (!BUI_NPAGES || BUI_TAIL == 0x4000) {
             /* Leave one app page for BRSAVE.APP, which writes these borrowed
-             * pages without paging this helper out underneath itself. Screen
-             * 7's dedicated image page therefore reduces source capture by
-             * one page while its capability is active. */
-            if (BUI_NPAGES >= (BUI_IMAGE_PAGE ? 2 : 3) ||
+             * pages without paging this helper out underneath itself. Each
+             * optional image-cache page reduces source capture accordingly. */
+            if (BUI_NPAGES >= (BUI_IMAGE_PAGE2 ? 1 : (BUI_IMAGE_PAGE ? 2 : 3)) ||
                 !(page = alloc_page())) {
                 BUI_FLAGS |= BUI_SOURCE_FULL;
                 break;
@@ -134,6 +148,7 @@ static void source_free(void)
     BUI_TAIL = BUI_STAGE_LEN = 0;
     BUI_FLAGS = 0;
     BUI_FORM_ACTIVE = 0;
+    reset_image_cache();
 }
 
 static unsigned char key_at(const char *p)
@@ -189,6 +204,8 @@ static unsigned char save_cfg(void)
     return gb_fs_save((char *)0x1000, *(volatile unsigned int *)0x1200);
 }
 
+static void strip_http_prefix(void);
+
 static void load_proxy(void)
 {
     const char *cfg = (const char *)0x1000;
@@ -205,6 +222,7 @@ static void load_proxy(void)
         i++;
     }
     BUI_PROXY[n] = 0;
+    strip_http_prefix();
 }
 
 static unsigned char lower(unsigned char c)
@@ -218,6 +236,13 @@ static unsigned char prefix(const char *s, const char *want)
     return 1;
 }
 
+static void strip_http_prefix(void)
+{
+    unsigned char i = 0;
+    if (!prefix(BUI_PROXY, "http://")) return;
+    do { BUI_PROXY[i] = BUI_PROXY[i + 7]; } while (BUI_PROXY[i++]);
+}
+
 static unsigned char parse_proxy(void)
 {
     const char *p = BUI_PROXY;
@@ -227,7 +252,8 @@ static unsigned char parse_proxy(void)
     BUI_CTRL &= (unsigned char)~BUI_PROXY_ON;
     if (!*p) return 1;
     if (prefix(p, "https://")) return 0;
-    if (prefix(p, "http://")) p += 7;
+    strip_http_prefix();
+    p = BUI_PROXY;
     while (*p && *p != ':' && *p != '/' && n < 63) { *dst++ = *p++; n++; }
     *dst = 0;
     if (!n || (n == 63 && *p && *p != ':' && *p != '/')) return 0;
@@ -320,8 +346,16 @@ static unsigned char prepare_request(void)
     if (BUI_REQ_PORT != 80 && out < limit) {
         *out++ = ':'; out = put_dec(out, BUI_REQ_PORT);
     }
-    ADD_TEXT("\r\nUser-Agent: GB/1\r\n");
-    if (BUI_IMAGE_PAGE) ADD_TEXT("X-GBPC: 7,1\r\n");
+    if (BUI_PROXY[0]) {
+        /* The explicit profile is sufficient for GB-proxy and leaves room for
+         * a 95-byte absolute URL in Browser's fixed 256-byte request buffer. */
+        ADD_TEXT("\r\nX-GB-DOX: geobench-1\r\nX-GBPC: ");
+        ADD_TEXT(BUI_IMAGE_PAGE ? "7,1\r\n" : "1\r\n");
+        BUI_CTRL |= BUI_DOX_MODE;
+    } else {
+        ADD_TEXT("\r\nUser-Agent: GB/1\r\n");
+        BUI_CTRL &= (unsigned char)~BUI_DOX_MODE;
+    }
     ADD_TEXT("Connection: close\r\n\r\n");
     if (out >= limit) {
         BROWSER_REQUEST[BROWSER_REQUEST_MAX] = 0;
@@ -417,17 +451,32 @@ void main(void)
             gb_pic_close();
             BUI_IMAGE_PAGE = 0;
         }
+        if (BUI_IMAGE_PAGE2) {
+            PIC_PAGE_K = BUI_IMAGE_PAGE2;
+            PIC_PAGE2_K = PIC_PAGE3_K = PIC_PAGE4_K = 0;
+            gb_pic_close();
+            BUI_IMAGE_PAGE2 = 0;
+        }
         BUI_SCREEN_MODE = 0;
     }
     else if (UI_OP == 17) {
         BUI_SCREEN_MODE = UI_N;
-        BUI_IMAGE_PAGE = 0;
-        if (UI_N == 7 && BUI_CACHE_PAGE) BUI_IMAGE_PAGE = alloc_page();
+        if (!BUI_IMAGE_PAGE && BUI_CACHE_PAGE) BUI_IMAGE_PAGE = alloc_page();
+        if (!BUI_IMAGE_PAGE2 && BUI_IMAGE_PAGE) BUI_IMAGE_PAGE2 = alloc_page();
+        reset_image_cache();
     }
     else if (UI_OP == 18) UI_RES = gb_url_resolve();
     else if (UI_OP == 19) {
         UI_RES = prepare_request();
         if (!UI_RES) request_error_text();
+    }
+    else if (UI_OP == 20) {
+        BUI_SCREEN_MODE = UI_N;
+        BUI_CACHE_PAGE = alloc_page();
+        BUI_IMAGE_PAGE = BUI_CACHE_PAGE ? alloc_page() : 0;
+        BUI_IMAGE_PAGE2 = BUI_IMAGE_PAGE ? alloc_page() : 0;
+        reset_image_cache();
+        UI_RES = (unsigned char)(BUI_CACHE_PAGE != 0);
     }
     else UI_RES = 0;
 }

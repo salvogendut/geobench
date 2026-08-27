@@ -56,6 +56,43 @@
 #define BUI_TABLE_CLICK_Y       (*(volatile unsigned char *)0x3AE5)
 #define BUI_IMAGE_RETRY         (*(volatile unsigned char *)0x3AE6)
 
+/* Incremental one-bank DOX decoder state. The decoder lives in GBDOX.MOD and
+ * publishes only complete Browser records between frame callbacks. */
+#define BUI_DOX_STATE           (*(volatile unsigned char *)0x3AE7)
+#define BUI_DOX_TEXT_OFF        (*(volatile unsigned int  *)0x3AE8)
+#define BUI_DOX_TEXT_END        (*(volatile unsigned int  *)0x3AEA)
+#define BUI_DOX_GRPH_OFF        (*(volatile unsigned int  *)0x3AEC)
+#define BUI_DOX_GRPH_END        (*(volatile unsigned int  *)0x3AEE)
+#define BUI_DOX_LINK_OFF        (*(volatile unsigned int  *)0x3AF0)
+#define BUI_DOX_LINK_END        (*(volatile unsigned int  *)0x3AF2)
+#define BUI_DOX_POS             (*(volatile unsigned int  *)0x3AF4)
+#define BUI_DOX_ERROR           (*(volatile unsigned char *)0x3AF6)
+#define BUI_DOX_TABLE_ROWS      (*(volatile unsigned char *)0x3AF7)
+#define BUI_DOX_TABLE_CELLS     (*(volatile unsigned char *)0x3AF8)
+
+/* Current-page GBPC cache. Image bytes live in a borrowed bank when one is
+ * available, or in the reserved tail of the Browser's line-cache bank. The
+ * compact directory remains in shared low RAM so GBWEB can reset it without
+ * loading GBIMG. */
+#define BUI_IMAGE_CACHE_TAIL    (*(volatile unsigned int  *)0x3AF9)
+#define BUI_IMAGE_DATA_OFF      (*(volatile unsigned int  *)0x3AFB)
+#define BUI_IMAGE_EXPECTED      (*(volatile unsigned int  *)0x3AFD)
+#define BUI_IMAGE_CACHE_NEXT    (*(volatile unsigned char *)0x3AFF)
+#define BUI_IMAGE_CACHE_META    ((volatile unsigned char *)0x3B00)
+#define BUI_IMAGE_PAGE2         (*(volatile unsigned char *)0x3BC0)
+#define BUI_DOX_FORM_ID         (*(volatile unsigned char *)0x3BC1)
+#define BROWSER_IMAGE_CACHE_MAX 32
+#define BROWSER_IMAGE_CACHE_ENTRY_SIZE 6
+#define BROWSER_IMAGE_CACHE_KEY 0
+#define BROWSER_IMAGE_CACHE_OFF 2
+#define BROWSER_IMAGE_CACHE_LEN 4
+
+#define BUI_DOX_IDLE            0
+#define BUI_DOX_PARSING         1
+#define BUI_DOX_DONE            2
+#define BUI_DOX_FAILED          3
+#define BUI_DOX_RESOURCE_FLAG   0x8000
+
 #define BROWSER_IMAGE_NO_CELL   0xFF
 
 #define BROWSER_HIT_NONE        0

@@ -129,7 +129,9 @@ APPDEFS="-DGB_MSX2" DATA_LOC=0x6800 BUTTON=1 tools/build_capp.sh apps/calculator
 APP_ICON=apps/telnet/icon.asm GBLIB_SRC="$TELNET_GBLIB" APPDEFS="-DGB_MSX2" DATA_LOC=0x7300 NET=1 DOC=1 tools/build_capp.sh apps/telnet build/msx/TELNET.RAW
 APP_ICON=apps/formref/icon.asm APP_ICON16=apps/formref/icon16.asm APPDEFS="-DGB_MSX2" DATA_LOC=0x6200 WIDGETS=1 STEPPER=1 SELECTOR=1 ACTIONS=1 FORM=1 FORM_SELECT=1 tools/build_capp.sh apps/formref build/msx/FORMREF.RAW
 APPDEFS="-DGB_MSX2" DATA_LOC=0x6200 BUTTON=1 SOUND=1 tools/build_capp.sh apps/sndtest build/msx/SNDTEST.RAW
-APP_ICON=apps/browser/icon.asm APPDEFS="-DGB_MSX2" GBWIN=0 GBLIB_SRC=lib/gb/gblib_browser.s APP_CFLAGS="--max-allocs-per-node 100000" DATA_LOC=0x7E00 NET=1 tools/build_capp.sh apps/browser build/msx/BROWSER.RAW
+# DOX dispatch leaves Browser's loaded image just above the old 0x7E00 split;
+# its 91-byte data/BSS footprint still fits comfortably below 0x8000 here.
+APP_ICON=apps/browser/icon.asm APPDEFS="-DGB_MSX2" GBWIN=0 GBLIB_SRC=lib/gb/gblib_browser.s APP_CFLAGS="--max-allocs-per-node 100000" DATA_LOC=0x7E80 NET=1 tools/build_capp.sh apps/browser build/msx/BROWSER.RAW
 APPDEFS="-DGB_MSX2" DATA_LOC=0x6200 tools/build_capp.sh apps/brsave build/msx/BRSAVE.RAW
 APPDEFS="-DGB_MSX2" tools/build_capp.sh apps/saver build/msx/SQUARES.RAW
 APPDEFS="-DGB_MSX2" tools/build_capp.sh apps/ant  build/msx/ANT.RAW
@@ -157,6 +159,7 @@ tools/build_uimod.sh                             # -> build/GBUI.RAW (dialogs/me
 APPDEFS="-DGB_MSX2" tools/build_appickmod.sh build/msx/GBAPICK.RAW
 tools/build_webmod.sh build/msx/GBWEB.RAW        # Browser cache/config helper
 APPDEFS="-DGB_MSX2" tools/build_imgmod.sh build/msx/GBIMG.RAW # Browser inline-image helper
+APPDEFS="-DGB_MSX2" tools/build_doxmod.sh build/msx/GBDOX.RAW # Browser DOX/PIC decoder
 
 # --- assets ------------------------------------------------------------------
 python3 tools/genfont.py build/msx/DEFAULT.FNT           # 1bpp glyphs: shared format
@@ -307,6 +310,7 @@ cp build/GBUI.RAW       QA/MSX/CARD/GBENCH/GBUI.MOD
 cp build/msx/GBAPICK.RAW QA/MSX/CARD/GBENCH/GBAPICK.MOD
 cp build/msx/GBWEB.RAW  QA/MSX/CARD/GBENCH/GBWEB.MOD
 cp build/msx/GBIMG.RAW  QA/MSX/CARD/GBENCH/GBIMG.MOD
+cp build/msx/GBDOX.RAW  QA/MSX/CARD/GBENCH/GBDOX.MOD
 cp build/msx/SPLASH.BIN  QA/MSX/CARD/GBENCH/SPLASH.MOD
 cp build/msx/SPLASHD.BIN QA/MSX/CARD/GBENCH/SPLASHD.MOD
 cp build/msx/GBTITLE.RAW QA/MSX/CARD/GBENCH/GBTITLE.MOD

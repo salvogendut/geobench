@@ -1,8 +1,9 @@
-/* BROWSER.APP - bounded, text-first streaming HTTP browser for GEOBENCH.
+/* BROWSER.APP - bounded, text-first HTTP browser for GEOBENCH.
  *
- * Pages are parsed directly into fixed-width rendered lines in one borrowed
- * 16K page. No DOM is retained; a bounded raw-source copy supports offline
- * Save. CPC uses GBNET, MSX uses TCP/IP UNAPI, and PCW uses PerryNet. */
+ * Direct pages stream through the compact HTML parser. Proxy pages negotiate
+ * bounded DOX/PIC and are decoded incrementally from one borrowed 16K page.
+ * No DOM is retained; a raw-source copy supports offline Save. CPC uses GBNET,
+ * MSX uses TCP/IP UNAPI, and PCW uses PerryNet. */
 #include "gb.h"
 #include "gbbrowser.h"
 
@@ -76,13 +77,6 @@
 #define IMAGE_SLOT_SIZE 3854
 #define IMAGE_ROWS      BROWSER_IMAGE_ROWS
 
-/* The cooperative app-page pool is always mapped below #4000. Browser claims
- * one otherwise-free page for rendered lines and returns it through the normal
- * picture-bank close service. GB_PICEDIT moves short records while that page is
- * mapped, so no pointer into the Browser's own page crosses a bank switch. */
-#define APP_NPAGES    (*(volatile unsigned char *)0x1437)
-#define APP_PAGES     ((volatile unsigned char *)0x1438)
-#define APP_BUSY      ((volatile unsigned char *)0x1440)
 #define PIC_PAGE_K    (*(volatile unsigned char *)0x130B)
 #define PIC_PAGE2_K   (*(volatile unsigned char *)0x1348)
 #ifdef GB_MSX2
@@ -155,10 +149,13 @@
 #define BUI_LOCAL_PAGE 0x04
 #define BUI_PROXY_ON 0x08
 #define BUI_SAVE_WORKER 0x10
+#define BUI_DOX_MODE 0x40
 #define RECEIVE_PAUSE_FLOW 0x01
 #define RECEIVE_PAUSE_FLUSH 0x02
 #define DEFER_PROXY_SAVE 0x01
 #define DEFER_NET_START  0x02
+#define DIRTY_FULL        0x01
+#define DIRTY_CONTENT     0x02
 
 #define UI_OP         (*(volatile unsigned char *)0x1700)
 #define UI_N          (*(volatile unsigned char *)0x1703)
@@ -365,6 +362,7 @@ static void reset_resources(void)
     BUI_TABLE_STATE = BUI_TABLE_GRID_COLS = BUI_TABLE_ROW_CELLS = 0;
     BUI_TABLE_DEPTH = 0;
     BUI_TABLE_CELL_IMAGE = BUI_TABLE_CELL_LINK = INVALID_OFFSET;
+    BUI_DOX_STATE = BUI_DOX_IDLE;
 }
 
 static unsigned char web_op(unsigned char op)
@@ -378,6 +376,16 @@ static unsigned char image_op(unsigned char op)
 {
     unsigned char result;
     BUI_MODNAME[2] = 'I'; BUI_MODNAME[3] = 'M'; BUI_MODNAME[4] = 'G';
+    UI_OP = op; UI_RES = 0;
+    result = web_call();
+    BUI_MODNAME[2] = 'W'; BUI_MODNAME[3] = 'E'; BUI_MODNAME[4] = 'B';
+    return result;
+}
+
+static unsigned char dox_op(unsigned char op)
+{
+    unsigned char result;
+    BUI_MODNAME[2] = 'D'; BUI_MODNAME[3] = 'O'; BUI_MODNAME[4] = 'X';
     UI_OP = op; UI_RES = 0;
     result = web_call();
     BUI_MODNAME[2] = 'W'; BUI_MODNAME[3] = 'E'; BUI_MODNAME[4] = 'B';
@@ -407,18 +415,6 @@ static unsigned char ring_index(unsigned char start, unsigned char rel)
     unsigned char n = (unsigned char)(start + rel);
     if (n >= FALLBACK_LINES) n = (unsigned char)(n - FALLBACK_LINES);
     return n;
-}
-
-static unsigned char alloc_cache_page(void)
-{
-    unsigned char i;
-    for (i = 0; i < APP_NPAGES; i++) {
-        if (!APP_BUSY[i]) {
-            APP_BUSY[i] = 1;
-            return APP_PAGES[i];
-        }
-    }
-    return 0;
 }
 
 static void source_flush(void)
@@ -691,7 +687,7 @@ static unsigned char body_write(const unsigned char *buf, unsigned int len)
         return 1;
     }
     for (i = 0; i < len; i++) source_byte(buf[i]);
-    gb_html_feed(buf, len);
+    if (!(BUI_CTRL & BUI_DOX_MODE)) gb_html_feed(buf, len);
     bytes_done += len;
     return 1;
 }
@@ -764,6 +760,11 @@ static void finish_page(void)
         }
         BUI_IMAGE_SCAN = 1;
         BUI_STATUS_DIRTY = 1;
+        return;
+    }
+    if (BUI_CTRL & BUI_DOX_MODE) {
+        source_flush();
+        if (!dox_op(28)) set_status("Bad DOX");
         return;
     }
     gb_html_end();
@@ -844,10 +845,7 @@ static void headers_complete(void)
         gb_http_chunk_have_digit = 0;
     }
     set_status(BUI_IMAGE_REQUEST ? "Receiving image..." : "Receiving page...");
-    if (BUI_IMAGE_REQUEST && gb_http_have_length &&
-#ifdef GB_MSX2
-        !BUI_IMAGE_PAGE &&
-#endif
+    if (BUI_IMAGE_REQUEST && gb_http_have_length && !BUI_IMAGE_PAGE &&
         gb_http_content_length > IMAGE_SLOT_SIZE) {
         fail_page("Image too large"); return;
     }
@@ -894,7 +892,7 @@ static void start_page(void)
     if (!url[0]) { set_status("Enter URL"); return; }
     if (!prepare_request(0)) return;
     source_reset();
-    BUI_CTRL &= BUI_PROXY_ON;
+    BUI_CTRL &= (BUI_PROXY_ON | BUI_DOX_MODE);
     hist_start = hist_count = view_top = pending_len = cache_full = 0;
     reset_resources();
     receive_paused = 0;
@@ -986,10 +984,13 @@ static void local_tick(void)
 
 static void start_visible_image(void)
 {
+    unsigned char found;
     if (!BUI_IMAGE_SCAN || !cache_page || !have_page || state != ST_IDLE) return;
     BUI_IMAGE_SCAN = 0;
     source_flush();
-    if (!image_op(22)) {
+    found = image_op(22);
+    if (found == 3) return;
+    if (!found) {
 #ifndef GB_PCW
         if (BUI_IMAGE_RETRY == 1) {
             BUI_IMAGE_RETRY = 2;
@@ -1006,6 +1007,15 @@ static void start_visible_image(void)
         status_text = "Page complete";
         BUI_STATUS_DIRTY = 1;
         return;
+    }
+    if (found == 2) {
+        if (!dox_op(30)) {
+            BUI_IMAGE_FAILED = BUI_IMAGE_URL;
+            BUI_IMAGE_SCAN = 1;
+            status_text = "Image unavailable";
+            BUI_STATUS_DIRTY = 1;
+            return;
+        }
     }
     BUI_IMAGE_REQUEST = 1;
     if (!prepare_request(1)) {
@@ -1216,26 +1226,30 @@ static void draw_scrollbar(void)
                         1, (unsigned char)(th - 2), 3);
 }
 
-static void draw_page(void)
+static void draw_content_area(void)
 {
-    gb_fill(0, 24, GB_COLS, (unsigned char)(GB_LINES - 24), 0);
     if (have_page) reset_image_scan();
-    draw_url();
-    gb_text(2, STATUS_Y, status_text);
-    if (title[0]) gb_text(2, TITLE_Y, title);
-    gb_fill((unsigned char)(TEXT_X - 1), CONTENT_Y,
-            (unsigned char)(GB_COLS - TEXT_X), (unsigned char)(VIEW_ROWS * 8), 1);
     draw_scrollbar();
     UI_N = (unsigned char)(editing | (caret_on ? 0x80 : 0));
     (void)image_op(24);
     if (BUI_IMAGE_READY) (void)image_op(23);
+    dirty &= (unsigned char)~DIRTY_CONTENT;
+}
+
+static void draw_page(void)
+{
+    gb_fill(0, 24, GB_COLS, (unsigned char)(GB_LINES - 24), 0);
+    draw_url();
+    gb_text(2, STATUS_Y, status_text);
+    if (title[0]) gb_text(2, TITLE_Y, title);
+    draw_content_area();
     dirty = BUI_STATUS_DIRTY = 0; redraw_div = 0;
 }
 
 static void scroll_page(unsigned char down)
 {
     unsigned char max_top;
-    if (down) {
+    if (down == 1) {
         if (view_top + VIEW_ROWS < hist_count) {
             max_top = (unsigned char)(hist_count - VIEW_ROWS);
             view_top = (unsigned char)(max_top - view_top > 3 ? view_top + 3 : max_top);
@@ -1248,9 +1262,10 @@ static void scroll_page(unsigned char down)
             set_status("Receiving page...");
             return;
         }
-    } else if (view_top) view_top = (unsigned char)(view_top > 3 ? view_top - 3 : 0);
+    } else if (!down && view_top)
+        view_top = (unsigned char)(view_top > 3 ? view_top - 3 : 0);
     reset_image_scan();
-    dirty = 1;
+    dirty |= DIRTY_CONTENT;
 }
 
 static void begin_url_edit(void)
@@ -1271,19 +1286,21 @@ static void handle_click(void)
     if (UI_N == BROWSER_HIT_URL) begin_url_edit();
     else if (UI_N == BROWSER_HIT_GO) { if (state == ST_IDLE) start_page(); }
     else if (UI_N == BROWSER_HIT_BACK) go_back();
-    else if (UI_N == BROWSER_HIT_SCROLL_UP) scroll_page(0);
-    else if (UI_N == BROWSER_HIT_SCROLL_DOWN) scroll_page(1);
+    else if (UI_N == BROWSER_HIT_SCROLL_UP || UI_N == BROWSER_HIT_SCROLL_DOWN)
+        scroll_page(hist_count > VIEW_ROWS ? 2 :
+                    UI_N == BROWSER_HIT_SCROLL_DOWN);
     else if (UI_N == BROWSER_HIT_FORM_EDIT) {
         editing = 2; caret_on = 1; caret_tick = 0;
-        dirty = 1; redraw_form();
+        redraw_form();
     } else if (UI_N == BROWSER_HIT_FORM_SUBMIT) submit_form();
     else if (UI_N == BROWSER_HIT_LINK) open_link(link_url);
 }
 
 static void handle_keys(void)
 {
-    unsigned char c, count = 8, changed = 0, n;
+    unsigned char c, count = 8, changed = 0, n, old_len;
     if (editing == 1) url_len = current_url_len();
+    old_len = url_len;
     if (!editing && down_key_event() &&
         (state == ST_IDLE || BUI_IMAGE_REQUEST ||
          (receive_paused & RECEIVE_PAUSE_FLOW)))
@@ -1297,10 +1314,8 @@ static void handle_keys(void)
                 return;
             }
             if (c == 0x1B) fail_page("Cancelled");
-            else if (BUI_IMAGE_REQUEST && c == 0x10) scroll_page(0);
-            else if (BUI_IMAGE_REQUEST && c == 0x0E) scroll_page(1);
-            else if ((receive_paused & RECEIVE_PAUSE_FLOW) && c == 0x10) scroll_page(0);
-            else if ((receive_paused & RECEIVE_PAUSE_FLOW) && c == 0x0E) scroll_page(1);
+            else if ((BUI_IMAGE_REQUEST || (receive_paused & RECEIVE_PAUSE_FLOW)) &&
+                     (c == 0x10 || c == 0x0E)) scroll_page(c == 0x0E);
             continue;
         }
         if (!editing) {
@@ -1345,7 +1360,10 @@ static void handle_keys(void)
     }
     if (changed) {
         caret_tick = 0; caret_on = 1;
-        if (editing == 2) redraw_form(); else redraw_url();
+        if (editing == 2) redraw_form();
+        else {
+            gb_curhide(); UI_N = old_len; (void)dox_op(31); gb_curshow();
+        }
     }
     else if (editing && ++caret_tick >= 18) {
         caret_tick = 0; caret_on ^= 1;
@@ -1355,6 +1373,7 @@ static void handle_keys(void)
 
 static void frame_tick(void)
 {
+    unsigned char dox_result;
 #ifndef GB_PCW
     unsigned char proxy_result;
     if (deferred_ops & DEFER_PROXY_SAVE) {
@@ -1382,12 +1401,27 @@ static void frame_tick(void)
     else
 #endif
     network_tick();
+    if (BUI_DOX_STATE == BUI_DOX_PARSING) {
+        dox_result = dox_op(29);
+        if (!dox_result) {
+            set_status("Bad DOX");
+        } else if (dox_result == 2) {
+            have_page = 1;
+            reset_image_scan();
+            set_status(cache_full ? "Page cache full" : "Page complete");
+            dirty = 1;
+        }
+    }
     if (state == ST_IDLE && (BUI_CTRL & BUI_SAVE_PENDING)) save_source();
     if (state == ST_IDLE && !editing && !(BUI_CTRL & BUI_SAVE_PENDING))
         start_visible_image();
-    if (!editing && dirty &&
+    if (!editing && (dirty & DIRTY_FULL) &&
         (state == ST_IDLE || (receive_paused & RECEIVE_PAUSE_FLOW) || ++redraw_div >= 6)) {
         gb_curhide(); draw_page(); gb_curshow();
+    }
+    else if (!editing && (dirty & DIRTY_CONTENT) &&
+             (state == ST_IDLE || (receive_paused & RECEIVE_PAUSE_FLOW))) {
+        gb_curhide(); draw_content_area(); gb_curshow();
     }
     else if (!editing && BUI_STATUS_DIRTY) redraw_status();
 }
@@ -1432,13 +1466,13 @@ void main(void)
     title[0] = pending[0] = 0;
     url_len = title_len = 0;
     hist_start = hist_count = view_top = pending_len = cache_full = 0;
-    cache_page = alloc_cache_page();
 #ifdef GB_MSX2
-    /* Screen 7 can consume the proxy's denser mode-7 payload, but only when a
-     * dedicated page is available for the full 160x96 image. */
     UI_N = MSX_SCRMOD;
-    (void)web_op(17);
+#else
+    UI_N = 0;
 #endif
+    /* GBWEB borrows separate page and image-cache banks when RAM permits. */
+    (void)web_op(20);
     reset_resources();
     status_text = cache_page ? "" : "Limited page cache";
     editing = dirty = 1;

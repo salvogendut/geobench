@@ -192,8 +192,8 @@ images sequentially through one bounded GBPC v2 slot and reuses that slot after 
 the proxy performs conversion of ordinary web images. One previous URL is
 retained for Back. Its File menu loads and saves offline `.HTM` files, and File Manager opens
 those files in Browser with the text-file icon. The Settings menu persists an
-optional plain-HTTP proxy as `PROXY=` in `GEOBENCH.CFG`; selecting Direct clears
-it. HTTPS is not supported because the PCW side has no TLS implementation.
+optional plain-HTTP proxy `host[:port]` as `PROXY=` in `GEOBENCH.CFG`; selecting
+Direct clears it. HTTPS is not supported because the PCW side has no TLS implementation.
 
 ## Not (yet) on the PCW
 

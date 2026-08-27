@@ -251,6 +251,7 @@ tools/build_uimod.sh build/GBUI.RAW                # paged dialog module (#142) 
 tools/build_appickmod.sh build/GBAPICK.RAW         # ICONED header-aware .APP picker (#426)
 tools/build_webmod.sh build/GBWEB.RAW              # Browser source/config helper (#373)
 tools/build_imgmod.sh build/GBIMG.RAW              # Browser inline-image cache helper (#393)
+tools/build_doxmod.sh build/GBDOX.RAW              # Browser bounded DOX/PIC decoder (#487)
 tools/build_netmod.sh build/GBNET.RAW             # W5100 networking module (#238) -> build/GBNET.RAW
 tools/build_m4netmod.sh build/GBNETM4.RAW         # M4 TCP networking module (#259) -> build/GBNETM4.RAW
 tools/build_m4savemod.sh                          # M4 file save module (#259) -> build/M4SAVE.RAW

@@ -1,9 +1,9 @@
 /* GBIMG.MOD - bounded Browser inline-image cache helper.
  *
- * The Browser keeps page records and one converted GBPC image in a borrowed
- * 16K bank. This paged helper performs the infrequent bank copies, validation,
- * visible-image lookup, and clipped blit so that code does not consume the
- * PCW Browser app bank. */
+ * The Browser keeps page records plus a bounded current-page GBPC cache in
+ * borrowed 16K banks. This paged helper performs the infrequent bank copies,
+ * validation, cache lookup, visible-image lookup, and clipped blit so that
+ * code does not consume the PCW Browser app bank. */
 #include "gb.h"
 #include "gbbrowser.h"
 
@@ -28,6 +28,7 @@
 #define BUI_TEXT_X      (*(volatile unsigned char *)0x3AC4)
 #define BUI_CONTENT_Y   (*(volatile unsigned char *)0x3AC5)
 #define BUI_SCREEN_COLS (*(volatile unsigned char *)0x3AC6)
+#define BUI_IMAGE_SCAN  (*(volatile unsigned char *)0x3AC7)
 #define BUI_IMAGE_PAGE  (*(volatile unsigned char *)0x3ADC)
 #define BUI_IMAGE_MODE  (*(volatile unsigned char *)0x3ADD)
 #define BUI_IMAGE_STRIDE (*(volatile unsigned char *)0x3ADE)
@@ -68,7 +69,7 @@
 #define FALLBACK_LINES  7
 #define IMAGE_SLOT_OFS  0x30F2
 #define IMAGE_SLOT_SIZE 3854
-#define IMAGE_PAGE_SIZE 7694
+#define IMAGE_PAGE_SIZE 0x4000
 #define IMAGE_HEADER_SIZE 14
 #define IMAGE_ROWS      BROWSER_IMAGE_ROWS
 #define URL_Y           26
@@ -79,11 +80,7 @@
 #define SCROLL_W        3
 #define FORM_BUTTON_W   14
 #define FORM_H          16
-#ifdef GB_MSX2
-#define TABLE_GRID_MAX  3
-#else
-#define TABLE_GRID_MAX  2
-#endif
+#define TABLE_GRID_MAX  4
 
 static unsigned char bank_read(unsigned int off, char *dst, unsigned int len)
 {
@@ -95,23 +92,96 @@ static unsigned char bank_read(unsigned int off, char *dst, unsigned int len)
     return gb_pic_edit(GB_PICEDIT_CHUNK);
 }
 
-static unsigned int image_base(void)
+static unsigned char image_page(unsigned int off)
 {
-    return BUI_IMAGE_MODE == 7 ? 0 : IMAGE_SLOT_OFS;
+    if (!BUI_IMAGE_PAGE) return BUI_CACHE_PAGE;
+    if (off >= 0x4000 && BUI_IMAGE_PAGE2) return BUI_IMAGE_PAGE2;
+    return BUI_IMAGE_PAGE;
+}
+
+static unsigned int image_bank_off(unsigned int off)
+{
+    return BUI_IMAGE_PAGE ? (unsigned int)(off & 0x3FFF) :
+                            (unsigned int)(IMAGE_SLOT_OFS + off);
+}
+
+static unsigned int image_limit(void)
+{
+    return BUI_IMAGE_PAGE2 ? (unsigned int)(IMAGE_PAGE_SIZE * 2U) :
+           (BUI_IMAGE_PAGE ? IMAGE_PAGE_SIZE : IMAGE_SLOT_SIZE);
 }
 
 static unsigned char image_bank_read(unsigned int off, char *dst,
                                      unsigned int len)
 {
-    PIC_PAGE_K = BUI_IMAGE_MODE == 7 ? BUI_IMAGE_PAGE : BUI_CACHE_PAGE;
+    unsigned int absolute = (unsigned int)(BUI_IMAGE_DATA_OFF + off);
+    PIC_PAGE_K = image_page(absolute);
     PIC_PAGE2_K = 0;
 #ifdef GB_MSX2
     PIC_PAGE3_K = PIC_PAGE4_K = 0;
 #endif
     gb_pic_edit_buf = (unsigned int)dst;
-    gb_pic_edit_off = image_base() + off;
+    gb_pic_edit_off = image_bank_off(absolute);
     FS_SAVE_LEN_K = len;
     return gb_pic_edit(GB_PICEDIT_CHUNK);
+}
+
+static unsigned int meta_get(unsigned char entry, unsigned char field)
+{
+    unsigned char pos = (unsigned char)(entry * BROWSER_IMAGE_CACHE_ENTRY_SIZE + field);
+    return BUI_IMAGE_CACHE_META[pos] |
+        ((unsigned int)BUI_IMAGE_CACHE_META[(unsigned char)(pos + 1)] << 8);
+}
+
+static void meta_put(unsigned char entry, unsigned char field, unsigned int value)
+{
+    unsigned char pos = (unsigned char)(entry * BROWSER_IMAGE_CACHE_ENTRY_SIZE + field);
+    BUI_IMAGE_CACHE_META[pos] = (unsigned char)value;
+    BUI_IMAGE_CACHE_META[(unsigned char)(pos + 1)] = (unsigned char)(value >> 8);
+}
+
+static void invalidate_range(unsigned int off, unsigned int len)
+{
+    unsigned char i;
+    unsigned int item_off, item_len, end = (unsigned int)(off + len);
+    for (i = 0; i < BROWSER_IMAGE_CACHE_MAX; i++) {
+        if (meta_get(i, BROWSER_IMAGE_CACHE_KEY) == INVALID_OFFSET) continue;
+        item_off = meta_get(i, BROWSER_IMAGE_CACHE_OFF);
+        item_len = meta_get(i, BROWSER_IMAGE_CACHE_LEN);
+        if (item_off < end && off < item_off + item_len)
+            meta_put(i, BROWSER_IMAGE_CACHE_KEY, INVALID_OFFSET);
+    }
+}
+
+static unsigned char reserve_image(unsigned int expected)
+{
+    unsigned int off, limit = image_limit();
+    if (!expected || expected > limit) return 0;
+    off = BUI_IMAGE_CACHE_TAIL;
+    if (BUI_IMAGE_PAGE && (off & 0x3FFF) + expected > IMAGE_PAGE_SIZE)
+        off = (unsigned int)((off + 0x3FFF) & 0xC000);
+    if (off + expected > limit) off = 0;
+    invalidate_range(off, expected);
+    BUI_IMAGE_DATA_OFF = off;
+    BUI_IMAGE_EXPECTED = expected;
+    BUI_IMAGE_CACHE_TAIL = (unsigned int)(off + expected);
+    if (BUI_IMAGE_CACHE_TAIL == limit) BUI_IMAGE_CACHE_TAIL = 0;
+    return 1;
+}
+
+static void remember_image(void)
+{
+    unsigned char i, entry = BUI_IMAGE_CACHE_NEXT;
+    for (i = 0; i < BROWSER_IMAGE_CACHE_MAX; i++) {
+        entry = (unsigned char)((BUI_IMAGE_CACHE_NEXT + i) &
+            (BROWSER_IMAGE_CACHE_MAX - 1));
+        if (meta_get(entry, BROWSER_IMAGE_CACHE_KEY) == INVALID_OFFSET) break;
+    }
+    meta_put(entry, BROWSER_IMAGE_CACHE_OFF, BUI_IMAGE_DATA_OFF);
+    meta_put(entry, BROWSER_IMAGE_CACHE_LEN, BUI_IMAGE_LEN);
+    meta_put(entry, BROWSER_IMAGE_CACHE_KEY, BUI_IMAGE_URL);
+    BUI_IMAGE_CACHE_NEXT = (unsigned char)((entry + 1) &
+        (BROWSER_IMAGE_CACHE_MAX - 1));
 }
 
 static unsigned char read_line(unsigned char rel)
@@ -136,26 +206,42 @@ static unsigned char load_resource(unsigned int off)
     return 1;
 }
 
+static unsigned char begin_image(void)
+{
+    unsigned int expected = IMAGE_HEADER_SIZE;
+    unsigned char mode, width, height, stride;
+    if (BUI_STAGE_LEN < 10 || BUI_STAGE[0] != 'G' || BUI_STAGE[1] != 'B' ||
+        BUI_STAGE[2] != 'P' || BUI_STAGE[3] != 'C' || BUI_STAGE[4] != 2 ||
+        BUI_STAGE[7] || BUI_STAGE[9]) return 0;
+    mode = (unsigned char)BUI_STAGE[5];
+    width = (unsigned char)BUI_STAGE[6];
+    height = (unsigned char)BUI_STAGE[8];
+    if (!width || width > 160 || !height || height > 96) return 0;
+    if (mode == 1) stride = (unsigned char)((width + 3) >> 2);
+#ifdef GB_MSX2
+    else if (mode == 7 && BUI_IMAGE_PAGE && !(width & 3))
+        stride = (unsigned char)(width >> 1);
+#endif
+    else return 0;
+    while (height--) expected += stride;
+    return reserve_image(expected);
+}
+
 static unsigned char flush_image(void)
 {
-    unsigned int next, limit;
+    unsigned int next;
     if (!BUI_STAGE_LEN) return 1;
-    if (!BUI_IMAGE_MODE) {
-        BUI_IMAGE_MODE = (unsigned char)(BUI_IMAGE_PAGE && BUI_STAGE_LEN >= 6 &&
-            BUI_STAGE[0] == 'G' && BUI_STAGE[1] == 'B' &&
-            BUI_STAGE[2] == 'P' && BUI_STAGE[3] == 'C' &&
-            BUI_STAGE[4] == 2 && BUI_STAGE[5] == 7 ? 7 : 1);
-    }
+    if (!BUI_IMAGE_EXPECTED && !begin_image()) return 0;
     next = BUI_IMAGE_LEN + BUI_STAGE_LEN;
-    limit = BUI_IMAGE_MODE == 7 ? IMAGE_PAGE_SIZE : IMAGE_SLOT_SIZE;
-    if (next > limit) return 0;
-    PIC_PAGE_K = BUI_IMAGE_MODE == 7 ? BUI_IMAGE_PAGE : BUI_CACHE_PAGE;
+    if (next > BUI_IMAGE_EXPECTED) return 0;
+    PIC_PAGE_K = image_page(BUI_IMAGE_DATA_OFF);
     PIC_PAGE2_K = 0;
 #ifdef GB_MSX2
     PIC_PAGE3_K = PIC_PAGE4_K = 0;
 #endif
     gb_pic_edit_buf = (unsigned int)BUI_STAGE;
-    gb_pic_edit_off = image_base() + BUI_IMAGE_LEN;
+    gb_pic_edit_off = image_bank_off((unsigned int)(BUI_IMAGE_DATA_OFF +
+                                                    BUI_IMAGE_LEN));
     FS_SAVE_LEN_K = BUI_STAGE_LEN;
     if (!gb_pic_edit(GB_PICEDIT_WRITE)) return 0;
     BUI_IMAGE_LEN = next;
@@ -163,11 +249,11 @@ static unsigned char flush_image(void)
     return 1;
 }
 
-static unsigned char validate_image(void)
+static unsigned char load_image_info(void)
 {
     unsigned int expected = IMAGE_HEADER_SIZE;
     unsigned char mode, width, rows;
-    if (!flush_image() || BUI_IMAGE_LEN < IMAGE_HEADER_SIZE ||
+    if (BUI_IMAGE_LEN < IMAGE_HEADER_SIZE ||
         !image_bank_read(0, BROWSER_LINE, IMAGE_HEADER_SIZE)) return 0;
     if (BROWSER_LINE[0] != 'G' || BROWSER_LINE[1] != 'B' ||
         BROWSER_LINE[2] != 'P' || BROWSER_LINE[3] != 'C' ||
@@ -181,8 +267,7 @@ static unsigned char validate_image(void)
         BUI_IMAGE_STRIDE = BUI_IMAGE_WB;
     }
 #ifdef GB_MSX2
-    else if (mode == 7 && BUI_IMAGE_PAGE && BUI_IMAGE_MODE == 7 &&
-             !(width & 3)) {
+    else if (mode == 7 && BUI_IMAGE_PAGE && !(width & 3)) {
         BUI_IMAGE_WB = (unsigned char)(width >> 2);
         BUI_IMAGE_STRIDE = (unsigned char)(width >> 1);
     }
@@ -190,8 +275,35 @@ static unsigned char validate_image(void)
     else return 0;
     rows = BUI_IMAGE_H;
     while (rows--) expected += BUI_IMAGE_STRIDE;
-    if (mode == 7) return (unsigned char)(expected == BUI_IMAGE_LEN);
-    return (unsigned char)(expected <= BUI_IMAGE_LEN);
+    BUI_IMAGE_MODE = mode;
+    return (unsigned char)(expected == BUI_IMAGE_LEN);
+}
+
+static unsigned char validate_image(void)
+{
+    if (!flush_image() || BUI_IMAGE_LEN != BUI_IMAGE_EXPECTED ||
+        !load_image_info()) return 0;
+    remember_image();
+    return 1;
+}
+
+static unsigned char recall_image(unsigned int key)
+{
+    unsigned char i;
+    for (i = 0; i < BROWSER_IMAGE_CACHE_MAX; i++) {
+        if (meta_get(i, BROWSER_IMAGE_CACHE_KEY) != key) continue;
+        BUI_IMAGE_DATA_OFF = meta_get(i, BROWSER_IMAGE_CACHE_OFF);
+        BUI_IMAGE_LEN = meta_get(i, BROWSER_IMAGE_CACHE_LEN);
+        BUI_IMAGE_EXPECTED = BUI_IMAGE_LEN;
+        BUI_IMAGE_MODE = BUI_IMAGE_STRIDE = 0;
+        if (load_image_info()) {
+            BUI_IMAGE_READY = 1;
+            return 1;
+        }
+        meta_put(i, BROWSER_IMAGE_CACHE_KEY, INVALID_OFFSET);
+        return 0;
+    }
+    return 0;
 }
 
 static void table_put_offset(unsigned char cell, unsigned char field,
@@ -387,15 +499,25 @@ static unsigned char table_geometry(unsigned char *start, unsigned char *cell_w)
     return 1;
 }
 
-static void select_image(unsigned char parent, unsigned char cell,
-                         unsigned int off)
+static void draw_visible(void);
+
+static unsigned char select_image(unsigned char parent, unsigned char cell,
+                                  unsigned int off)
 {
     BUI_IMAGE_URL = off;
     BUI_IMAGE_REL = parent;
     BUI_IMAGE_CELL = cell;
+    if (recall_image(off)) {
+        draw_visible();
+        BUI_IMAGE_SCAN = 1;
+        BUI_IMAGE_RETRY = 0;
+        return 1;
+    }
     BUI_IMAGE_LEN = BUI_STAGE_LEN = 0;
+    BUI_IMAGE_DATA_OFF = BUI_IMAGE_EXPECTED = 0;
     BUI_IMAGE_MODE = BUI_IMAGE_STRIDE = 0;
     BUI_IMAGE_READY = 0;
+    return 0;
 }
 
 static unsigned char find_visible(void)
@@ -434,8 +556,14 @@ static unsigned char find_visible(void)
                     BUI_IMAGE_SCAN_CELL = 0;
                 }
                 if (off == INVALID_OFFSET || off == BUI_IMAGE_FAILED) continue;
+                if (off & BUI_DOX_RESOURCE_FLAG) {
+                    if (select_image(parent, (unsigned char)(cell - 1), off))
+                        return 3;
+                    return 2;
+                }
                 if (!load_resource(off)) continue;
-                select_image(parent, (unsigned char)(cell - 1), off);
+                if (select_image(parent, (unsigned char)(cell - 1), off))
+                    return 3;
                 return 1;
             }
             rel = (unsigned char)(parent + rows);
@@ -448,8 +576,13 @@ static unsigned char find_visible(void)
             rel = (unsigned char)(parent + IMAGE_ROWS);
             BUI_IMAGE_SCAN_REL = rel;
             BUI_IMAGE_SCAN_CELL = 0;
-            if (off == BUI_IMAGE_FAILED || !load_resource(off)) continue;
-            select_image(parent, BROWSER_IMAGE_NO_CELL, off);
+            if (off == BUI_IMAGE_FAILED) continue;
+            if (off & BUI_DOX_RESOURCE_FLAG) {
+                if (select_image(parent, BROWSER_IMAGE_NO_CELL, off)) return 3;
+                return 2;
+            }
+            if (!load_resource(off)) continue;
+            if (select_image(parent, BROWSER_IMAGE_NO_CELL, off)) return 3;
             return 1;
         }
         rel++;
@@ -501,10 +634,11 @@ static void draw_visible(void)
             (cell_w - 2 - draw_w) / 2);
     }
     y = (unsigned char)(BUI_CONTENT_Y + (first - BUI_VIEW_TOP) * 8);
-    src = image_base() + IMAGE_HEADER_SIZE +
+    src = BUI_IMAGE_DATA_OFF + IMAGE_HEADER_SIZE +
           (unsigned int)block * BUI_IMAGE_STRIDE +
           (BUI_IMAGE_MODE == 7 ? (unsigned int)crop * 2 : crop);
-    PIC_PAGE_K = BUI_IMAGE_MODE == 7 ? BUI_IMAGE_PAGE : BUI_CACHE_PAGE;
+    PIC_PAGE_K = image_page(src);
+    src = image_bank_off(src);
     PIC_PAGE2_K = 0;
 #ifdef GB_MSX2
     PIC_PAGE3_K = PIC_PAGE4_K = 0;
@@ -593,8 +727,10 @@ static void draw_content(void)
     unsigned char row, rel, y, width, mark;
     for (row = 0; row < BUI_VIEW_ROWS; row++) {
         rel = (unsigned char)(BUI_VIEW_TOP + row);
-        if (rel >= BUI_HIST_COUNT || !read_line(rel)) return;
         y = (unsigned char)(BUI_CONTENT_Y + row * 8);
+        gb_fill((unsigned char)(BUI_TEXT_X - 1), y,
+                (unsigned char)(BUI_SCREEN_COLS - BUI_TEXT_X), 8, 1);
+        if (rel >= BUI_HIST_COUNT || !read_line(rel)) continue;
         mark = (unsigned char)BROWSER_LINE[0];
         if (mark == IMAGE_MARK) {
             if (!BUI_IMAGE_READY || line_offset(1) != BUI_IMAGE_URL)
@@ -656,6 +792,10 @@ static void hit_content(void)
     }
     if (x < SCROLL_X + SCROLL_W && y >= BUI_CONTENT_Y &&
         y < BUI_CONTENT_Y + BUI_VIEW_ROWS * 8) {
+        if (BUI_HIST_COUNT > BUI_VIEW_ROWS)
+            BUI_VIEW_TOP = (unsigned char)(((unsigned int)
+                (y - BUI_CONTENT_Y) * (BUI_HIST_COUNT - BUI_VIEW_ROWS)) /
+                (BUI_VIEW_ROWS * 8 - 1));
         UI_N = y >= BUI_CONTENT_Y + BUI_VIEW_ROWS * 4 ?
             BROWSER_HIT_SCROLL_DOWN : BROWSER_HIT_SCROLL_UP;
         return;

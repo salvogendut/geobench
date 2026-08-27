@@ -230,7 +230,7 @@ static void browser_menu(void)
     } else {
         sel = gb_popup(17, 8, browser_settings, 2);
         if (sel == 0) {
-            if (gb_prompt("HTTP proxy:", BUI_PROXY, 0x80 | BUI_PROXY_MAX))
+            if (gb_prompt("Proxy host:port:", BUI_PROXY, 0x80 | BUI_PROXY_MAX))
                 UI_RES = BUI_ACT_PROXY;
         } else if (sel == 1) {
             BUI_PROXY[0] = 0;

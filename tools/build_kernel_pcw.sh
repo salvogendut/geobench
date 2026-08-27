@@ -135,6 +135,7 @@ tools/build_uimod.sh                             # -> build/GBUI.RAW
 APPDEFS="-DGB_PCW" tools/build_appickmod.sh build/pcw/GBAPICK.RAW
 tools/build_webmod.sh                            # -> build/GBWEB.RAW
 tools/build_imgmod.sh                            # -> build/GBIMG.RAW
+APPDEFS="-DGB_PCW" tools/build_doxmod.sh build/pcw/GBDOX.RAW # Browser DOX/PIC decoder
 
 # --- portable icons/pictures; target-native fonts, pointer and splash ---------
 python3 tools/genfont.py build/pcw/DEFAULT.FNT

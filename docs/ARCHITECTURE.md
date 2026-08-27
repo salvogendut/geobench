@@ -172,8 +172,9 @@ rules are:
 - `TITLEBAR=<name>` selects a canonical 56-byte `.TBR` background motif and
   `GADGETS=<name>` independently selects a 50-byte `.GDT` close/maximize pair;
   both are independent of `ICONS=` and fall back to embedded `ORIGINAL` assets;
-- `PROXY=` is Browser's optional persistent plain-HTTP proxy URL; an empty value
-  means direct access;
+- `PROXY=` is Browser's optional persistent plain-HTTP proxy `host[:port]`; an
+  empty value means direct access. Legacy values prefixed with `http://` remain
+  accepted and are normalized when loaded or saved;
 - screensavers are full-screen `.SAV` apps launched by the desktop idle timer;
   per-module values remain app-owned `GEOBENCH.CFG` keys. Settings derives and
   pages in an optional same-stem configuration companion (`XMATRIX.SAV` uses

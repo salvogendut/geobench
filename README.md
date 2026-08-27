@@ -135,13 +135,16 @@ hardware, or use the disk images in an emulator.
 ### Browser proxy
 
 The optional [GB-proxy](https://github.com/salvogendut/GB-proxy) companion makes
-modern HTTPS pages practical for the CPC, MSX2, and PCW Browser. It simplifies HTML,
-shortens destination URLs, and converts web images into bounded GBPC pictures.
-Browser retains simple table rows from that HTML and lays them out as a compact
-grid: up to three columns on MSX2, or two on CPC and PCW with wider rows
-reflowed. Text and linked pictures inside cells remain clickable; CSS table
-layout, spanning cells, and nested-table geometry are intentionally outside the
-bounded renderer.
+modern HTTPS pages practical for the CPC, MSX2, and PCW Browser. It converts
+HTML into a bounded DOX document, shortens destination URLs, and exposes web
+images as lazy GBPC resources. Browser preserves table rows and columns and
+lays them out as a compact grid of up to four columns and 24 rows. Text and
+linked pictures inside cells remain clickable; CSS table layout, spanning
+cells, and nested-table geometry are intentionally outside the bounded
+renderer. Converted pictures are retained in a bounded current-page cache, so
+scrolling normally redraws them without another network request. Without a
+configured proxy, Browser retains its direct streamed-HTML path for plain HTTP
+sites.
 The MSX2 Browser advertises sixteen-colour mode-7 support when GEOBENCH is
 running in Screen 7 and can reserve the extra image page; every other case
 continues to request the portable four-colour mode:
@@ -159,9 +162,9 @@ Set `PRESET = "geobench"` in `config.py`, then start it:
 ```
 
 In `BROWSER.APP`, open **Settings > Proxy** and enter
-`http://127.0.0.1:5001` when the emulator and proxy run on the same computer.
+`127.0.0.1:5001` when the emulator and proxy run on the same computer.
 Real CPC/MSX2/PCW hardware must use the proxy computer's LAN address, for example
-`http://192.168.1.10:5001`. The value is persisted as `PROXY=` in
+`192.168.1.10:5001`. The value is persisted as `PROXY=` in
 `GEOBENCH.CFG`. GB-proxy serves plain HTTP to the 8-bit client, so run it only
 on a trusted network and do not use it for sensitive accounts.
 
