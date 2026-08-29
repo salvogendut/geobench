@@ -121,9 +121,15 @@ project's distrobox (which carries `rasm`, `sdcc`, `mtools`, `dosfstools`, ...).
 
 ## Card / disk images
 
-- **`build_card_img.sh [CARD] [IMG]`** — builds a partitioned **FAT16 card image**
+- **`build_card_img.sh [CARD] [IMG] [SIZE_MB]`** — builds a partitioned **FAT16 card image**
   (`QA/CPC/GEOBENCH.IMG` by default) from the staged `QA/CPC/CARD/` for Albireo and M4
-  image mode. Called by `build_kernel.sh`.
+  image mode. The size defaults to 32 MB and may be set from 4 through 2048 MB;
+  `CARD_IMG_MB` remains available as an environment-variable override. Called
+  by `build_kernel.sh`.
+- **`build_msx_img.sh [CARD] [IMG] [SIZE_MB]`** — builds the corresponding
+  partitioned FAT16/MBR Nextor image from `QA/MSX/CARD/`. The size defaults to
+  32 MB and may be set from 4 through 2048 MB; `MSX_IMG_MB` remains available
+  as an environment-variable override.
 - **`mkcpcmedia.py OUT.dsk --add FILE ...`** — builds the extended 80-track,
   single-sided AMSDOS DATA image used for the CPC picture gallery.
 - **`mkpcwdsk.py`** — builds bootable or data PCW CF2/CF2DD images, including

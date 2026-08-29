@@ -66,8 +66,9 @@ can test or deploy without rebuilding first):
   root-level `DIAG/`.
 - **`QA/CPC/GEOBENCH.IMG`** — a ready-to-flash shared **Albireo/M4 card image**: a
   partitioned FAT16 disk the CH376 auto-detects and 1984's M4 image mode can mount.
-  Built by `tools/build_card_img.sh`; a 32 MB local artifact, rebuilt every build
-  and not committed.
+  Built by `tools/build_card_img.sh`; a 32 MB local artifact by default,
+  rebuilt every build and not committed. Pass a size in megabytes as the third
+  argument to build a different 4-2048 MB image.
 - **`QA/CPC/Floppies/GEOBENCH.DSK`** — the bootable **Main** floppy image.
 - **`QA/CPC/Floppies/COMPANION.DSK`** — the **Companion** floppy with the larger apps
   (including Telnet, WGET, Browser, Shell, Mahjong and Calculator) and extra savers for drive B.
@@ -174,10 +175,12 @@ for current UNAPI implementation coverage.
   selector, `GEOBENCH.CFG`, the `GBENCH/` system folder
   (fonts/icons/cursor/modules/apps/savers), the complete gallery in `PICS/`, and
   development diagnostics in `DIAG/`.
-- **`QA/MSX/GBMSX.IMG`** — a bootable 32 MB **FAT16 hard-disk image** (a local
-  artifact, git-ignored like the CPC card image). `tools/build_msx_img.sh` fills
-  it from `QA/MSX/CARD` plus the Nextor system files, so Nextor's Sunrise IDE driver
-  boots it straight to the desktop.
+- **`QA/MSX/GBMSX.IMG`** — a bootable, 32 MB by default **FAT16 hard-disk
+  image** (a local artifact, git-ignored like the CPC card image).
+  `tools/build_msx_img.sh` fills it from `QA/MSX/CARD` plus the Nextor system
+  files, so Nextor's Sunrise IDE driver boots it straight to the desktop. Pass
+  a size in megabytes as the third argument to build a different 4-2048 MB
+  image.
 - **`QA/MSX/Floppies/GEOBENCH.DSK`** — the bootable 720K FAT12 system floppy,
   with the selectors, complete `GBENCH/` and `DIAG/` trees, `NEXTOR.SYS`,
   `COMMAND2.COM`, `UNAPINET.COM`, both third-party distribution notices, and
