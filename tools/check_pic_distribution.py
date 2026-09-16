@@ -288,6 +288,8 @@ def main() -> None:
     )
     if b"TIMESYNC=false\r\n" not in pcw_main["GEOBENCH.CFG"]:
         sys.exit("QA/PCW/Floppies/GEOBENCH.DSK: time sync must be disabled by default")
+    if b"PERRYNET_BAUD=17857\r\n" not in pcw_main["GEOBENCH.CFG"]:
+        sys.exit("QA/PCW/Floppies/GEOBENCH.DSK: PerryNet baud must default to 17857")
     for mutable, pristine in (
         (ROOT / "QA/CPC/CARD/GEOBENCH.CFG", ROOT / "QA/CPC/CARD/GBENCH/DEFAULT.CFG"),
         (ROOT / "QA/MSX/CARD/GEOBENCH.CFG", ROOT / "QA/MSX/CARD/GBENCH/DEFAULT.CFG"),
@@ -362,7 +364,7 @@ def main() -> None:
         "boot floppies; remaining themes on EXTRAS.DSK"
     )
     print("CPC floppy cursor: headerless DEFAULT.SPR matches the card distribution")
-    print("target defaults: pristine DEFAULT.CFG matches GEOBENCH.CFG on CPC, MSX and PCW; PCW time sync disabled")
+    print("target defaults: pristine DEFAULT.CFG matches GEOBENCH.CFG on CPC, MSX and PCW; PCW time sync disabled; PCW PerryNet baud defaults to 17857")
 
 
 if __name__ == "__main__":

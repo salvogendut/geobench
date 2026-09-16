@@ -16,6 +16,7 @@
  *                       "4 colors" / "16 colors")
  *     MSXMOUSE=TRUE|FALSE selects a mouse or joystick in MSX port 1 at the
  *                         next boot
+ *     PERRYNET_BAUD=9600|17857|41667 selects the PCW PerryNet serial profile
  * Each row shows the current value; clicking it lists the matching files in the
  * /GBENCH system folder (or root-level /PICS for wallpapers) and offers them in
  * a popup. The kernel loads font/icons/cursor only at boot, so a change takes
@@ -42,7 +43,7 @@
 #ifdef GB_MSX2
 #define DEF_H     198          /* includes video mode and Return to Defaults rows */
 #elif defined(GB_PCW)
-#define DEF_H     174          /* fixed monochrome palette: no Colours row */
+#define DEF_H     186          /* fixed monochrome palette: no Colours row */
 #else
 #define DEF_H     186
 #endif
@@ -69,10 +70,11 @@
 #define SS_CFG_ROW (NROWS + 5)
 #define SS_TM_ROW  (NROWS + 6)
 #elif defined(GB_PCW)
-#define SS_HDR_ROW NROWS
-#define SS_MOD_ROW (NROWS + 1)
-#define SS_CFG_ROW (NROWS + 2)
-#define SS_TM_ROW  (NROWS + 3)
+#define PERRYNET_ROW NROWS
+#define SS_HDR_ROW (NROWS + 1)
+#define SS_MOD_ROW (NROWS + 2)
+#define SS_CFG_ROW (NROWS + 3)
+#define SS_TM_ROW  (NROWS + 4)
 #else
 #define SS_HDR_ROW (NROWS + 1)
 #define SS_MOD_ROW (NROWS + 2)
@@ -92,6 +94,9 @@ static void s_draw(void);      /* forward: the colours editor repaints the windo
 static void draw_selector(unsigned char row, const char *value);
 static void saver_value(char *dst);       /* forward: s_draw shows the current SAVERTIME= (#219) */
 static void ss_module_value(char *dst);   /* forward: s_draw shows the current SAVER= module (#219) */
+#ifdef GB_PCW
+static void perrynet_baud_value(char *dst);
+#endif
 
 /* MIN_IST_ICONS: the exact icon count for an .IST to be offered as the desktop icon
    set. App-owned icons moved into GBAP headers, leaving 21 resident
@@ -677,6 +682,19 @@ static const gb_action_t configure_action[1] = {
     { "Configure", 16 }
 };
 
+#ifdef GB_PCW
+static const char *const perrynet_baud_lbl[3] = { "9600", "17857", "41667" };
+
+static void perrynet_baud_value(char *dst)
+{
+    unsigned char i;
+    cfg_get("PERRYNET_BAUD=", dst);
+    if (dst[0] != '-') return;
+    for (i = 0; perrynet_baud_lbl[1][i]; i++) dst[i] = perrynet_baud_lbl[1][i];
+    dst[i] = 0;
+}
+#endif
+
 /* paint the content: a white panel, each setting's label + current value, and a note
    that changes apply on the next boot. The WM already drew the frame/title/close. */
 static void s_draw(void)
@@ -732,6 +750,11 @@ static void s_draw(void)
                             "Mouse" : "Joystick";
         draw_selector(INPUT_ROW, input);
     }
+#endif
+#ifdef GB_PCW
+    gb_textbw((unsigned char)(win_x + 1), row_y(PERRYNET_ROW), "PerryNet baud");
+    perrynet_baud_value(val);
+    draw_selector(PERRYNET_ROW, val);
 #endif
     {
         char sv[16];                          /* #219: the screensaver section */
@@ -1347,6 +1370,18 @@ static void input_device_dialog(void)
 }
 #endif
 
+#ifdef GB_PCW
+static void perrynet_baud_dialog(void)
+{
+    unsigned char sel = gb_popup((unsigned char)(win_x + VAL_COL),
+                                 row_y(PERRYNET_ROW), perrynet_baud_lbl, 3);
+    gb_curhide();
+    if (sel != 0xFF) cfg_set("PERRYNET_BAUD=", perrynet_baud_lbl[sel]);
+    s_draw();
+    gb_curshow();
+}
+#endif
+
 /* Replace the mutable config with the target-specific pristine copy shipped in
    /GBENCH (card/MSX) or the floppy root. Font, icons, cursor and MSX mode still
    take effect at the next boot; palette and desktop-owned settings are live. */
@@ -1428,6 +1463,14 @@ static void s_click(void)
         }
         if (selector_hit(INPUT_ROW, mx, my)) {
             input_device_dialog();
+            return;
+        }
+    }
+#endif
+#ifdef GB_PCW
+    {
+        if (selector_hit(PERRYNET_ROW, mx, my)) {
+            perrynet_baud_dialog();
             return;
         }
     }

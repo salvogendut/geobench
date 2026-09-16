@@ -10,6 +10,9 @@
  * 1985.
  */
 #include "gb.h"
+#ifdef GB_PCW
+#include "gbperrynet.h"
+#endif
 
 #define DEF_X    8
 #define DEF_Y    18
@@ -196,6 +199,7 @@ static void log_time(unsigned char n, unsigned char h, unsigned char m, unsigned
 #define PN_OP_TCP_OPEN     0x30
 #define PN_OP_TCP_CLOSE    0x31
 #define PN_OP_TCP_SEND     0x32
+#define PN_OP_UART_SET     0x51
 #define PN_OP_UDP_OPEN     0x40
 #define PN_OP_UDP_CLOSE    0x41
 #define PN_OP_UDP_SEND     0x42
@@ -219,6 +223,7 @@ static unsigned char pn_channel;
 static unsigned char pn_udp_channel;
 static unsigned char pn_wifi_up;
 static unsigned char pn_conn;
+static unsigned char pn_uart_profile;
 static unsigned char pn_rxq[PN_RXQ_SIZE];
 static unsigned char pn_rx_head, pn_rx_tail;
 static unsigned char pn_udp_buf[64];
@@ -401,17 +406,28 @@ static void dart_wr(unsigned char reg, unsigned char val)
     ser_io = val; ser_out_ctrl();
 }
 
-static void serial_hw_init(void)
+static void serial_program_divisor(void)
 {
-    if (pcw_ser_inited) return;
-    /* Direct-boot GEOBENCH cannot rely on CP/M SETSIO. Program CPS8256
-     * channel A for 8N1. Baud is 2MHz PIT / 16 / divisor. */
     ser_io = 0x36; pit_out_ctrl();
     ser_io = (unsigned char)(pcw_serial_divisor & 0xFF); pit_out_tx();
     ser_io = (unsigned char)(pcw_serial_divisor >> 8); pit_out_tx();
     ser_io = 0x76; pit_out_ctrl();
     ser_io = (unsigned char)(pcw_serial_divisor & 0xFF); pit_out_rx();
     ser_io = (unsigned char)(pcw_serial_divisor >> 8); pit_out_rx();
+}
+
+static void serial_set_divisor(unsigned char div)
+{
+    pcw_serial_divisor = div;
+    if (pcw_ser_inited) serial_program_divisor();
+}
+
+static void serial_hw_init(void)
+{
+    if (pcw_ser_inited) return;
+    /* Direct-boot GEOBENCH cannot rely on CP/M SETSIO. Program CPS8256
+     * channel A for 8N1. Baud is 2MHz PIT / 16 / divisor. */
+    serial_program_divisor();
     ser_io = 0x18; ser_out_ctrl();
     dart_wr(4, 0x44);
     dart_wr(3, 0xC1);
@@ -673,6 +689,43 @@ static unsigned char pn_wait_ack(unsigned char want_seq, unsigned char *out,
     return 0;
 }
 
+static void pn_uart_settle(void) __naked
+{ __asm
+    ld bc,#0x8000
+1$: dec bc
+    ld a,b
+    or c
+    jr nz,1$
+    ret
+__endasm; }
+
+static unsigned char pn_uart_set(unsigned char profile)
+{
+    unsigned char payload[5], seq, divisor;
+    payload[0] = 0x00; payload[1] = 0x4B; divisor = 7;
+    if (profile == GB_PERRYNET_PROFILE_9600) {
+        payload[0] = 0x80; payload[1] = 0x25; divisor = 13;
+    } else if (profile == GB_PERRYNET_PROFILE_41667) {
+        payload[1] = 0x96; divisor = 3;
+    }
+    payload[2] = payload[3] = payload[4] = 0;
+    seq = pn_tx(PN_OP_UART_SET, 0, payload, 5);
+    if (!seq || !pn_wait_ack(seq, 0, 0, 60000)) return 0;
+    serial_set_divisor(divisor);
+    pn_uart_settle();
+    pn_in_len = 0;
+    pn_in_started = pn_in_esc = pn_in_overflow = 0;
+    pn_uart_profile = profile;
+    return 1;
+}
+
+static void pn_uart_restore(void)
+{
+    if (pn_uart_profile == GB_PERRYNET_PROFILE_9600) return;
+    if (!pn_uart_set(GB_PERRYNET_PROFILE_9600)) serial_set_divisor(13);
+    pn_uart_profile = GB_PERRYNET_PROFILE_9600;
+}
+
 static unsigned char nt_init(const unsigned char *cfg)
 {
     unsigned char seq;
@@ -681,7 +734,7 @@ static unsigned char nt_init(const unsigned char *cfg)
     unsigned char tries, wifi_status = 0xFF, wifi_connected = 0;
     (void)cfg;
     pn_diag_reset();
-    log_line(6, "serial: pcw9600 setup");
+    log_line(6, "serial: pcw setup");
     serial_hw_init();
     serial_probe_rx(60000);
     log_pn_probe(7, "idle");
@@ -697,6 +750,7 @@ static unsigned char nt_init(const unsigned char *cfg)
     pn_udp_channel = 0;
     pn_wifi_up = 0;
     pn_conn = 0;
+    pn_uart_profile = GB_PERRYNET_PROFILE_9600;
     pn_rx_head = pn_rx_tail = 0;
     pn_udp_len = 0;
     pn_in_len = 0;
@@ -707,6 +761,7 @@ static unsigned char nt_init(const unsigned char *cfg)
     if (!seq) { log_line(3, "init HELLO: tx fail"); log_pn_diag(4); return 0; }
     if (!pn_wait_ack(seq, out, &out_len, 60000)) { log_pn_ack_fail("HELLO"); return 0; }
     log_line(3, "HELLO ok");
+    if (!pn_uart_set(gb_perrynet_profile())) { log_pn_ack_fail("UART"); return 0; }
     pn_diag_reset();
     log_line(4, "WIFI_STATUS...");
     out_len = sizeof(out);
@@ -952,6 +1007,10 @@ static void log_rx(unsigned int n)
 static void fail(const char *msg)
 {
     if (opened) nt_close();
+#ifdef GB_PCW
+    nt_udp_close();
+    pn_uart_restore();
+#endif
     opened = 0;
     log_line(11, msg);
     log_line(12, "click window to retry");
@@ -1058,6 +1117,7 @@ static void tick(void)
         if (n) {
             nt_udp_close();
             if (!ntp_apply(rxbuf, n)) { fail("FAIL: ntp parse"); return; }
+            pn_uart_restore();
             log_line(12, "PASS; click to retry");
             step = STEP_DONE;
         } else if (++wait > 180) {
@@ -1088,6 +1148,10 @@ static void proc(void)
             break;
         case GB_MSG_CLOSE:
             if (opened) nt_close();
+#ifdef GB_PCW
+            nt_udp_close();
+            pn_uart_restore();
+#endif
             gb_wm_close();
             break;
         case GB_MSG_DRAG:  drag(); break;
