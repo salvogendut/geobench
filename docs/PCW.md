@@ -168,8 +168,13 @@ drawn straight into the framebuffer: the PCW char-cell layout makes each
 text cell 8 *contiguous* bytes (`cellrow*1024 + col*8`), one `lut4`
 lookup per glyph line. Fullscreen is the viewer-style `WM_FS` borderless
 window — no video-mode switch, so it looks the same on real hardware.
-The faster PerryNet profile requests nominal `19200` baud; PerryFi/PerryNet
-firmware aliases that to the PCW's exact `17857` baud divisor.
+The PCW Settings app exposes **PerryNet baud** as `9600`, `17857`, or
+`41667`, persisted as `PERRYNET_BAUD=` in `GEOBENCH.CFG`. Existing configs
+without that key behave as `17857`. The two faster choices are sent to
+PerryFi/PerryNet as nominal `19200` and `38400`; the firmware aliases those to
+the PCW's exact `17857` and `41667` baud divisors. TELNET, NETTEST, WGET and
+Browser switch the firmware and CPS8256 divisor before using PerryNet, then
+restore the serial link to `9600` when they finish.
 
 `WGET.APP` and `BROWSER.APP` use the same PerryNet host-pulled TCP path. WGET
 downloads a plain `http://` URL to floppy A or B, writing incrementally rather
@@ -264,10 +269,11 @@ I/O (a minimal roller table pointing every scanline at one shared row):
   small edit, suspect this first.
 - CPS8256 serial baud: the 8253 PIT is clocked at **2 MHz** and the DART
   divides by 16, so **baud = 125000 / count** — 9600 is count 13 (9615),
-  per Joyce's `JoyceCPS.cxx` (written against the real device). Not the
-  PC-style 1.8432 MHz crystal: count 12 is 10417 baud = framing garbage
-  on real hardware, and the 1985 emulator stores the count without
-  timing it, so it cannot catch a wrong divisor.
+  17857 is count 7, and 41667 is count 3, per Joyce's `JoyceCPS.cxx`
+  (written against the real device). Not the PC-style 1.8432 MHz crystal:
+  count 12 is 10417 baud = framing garbage on real hardware, and the 1985
+  emulator stores the count without timing it, so it cannot catch a wrong
+  divisor.
 - CPS8256 serial modem-control: GEOBENCH's direct-boot setup uses DART WR5
   `0x68` (TX enable + 8-bit TX, RTS/DTR inactive). Real PerryFi hardware
   answered `AT` at 9600 with this value, while WR5 `0xEA` (RTS/DTR asserted)

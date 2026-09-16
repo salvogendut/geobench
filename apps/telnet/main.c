@@ -40,6 +40,9 @@
 #include "charset.h"        /* 8x8 ASCII glyphs for the Mode-2 80x25 renderer */
 #endif
 #include "charset4.h"       /* 4x8 glyphs for the windowed direct renderers (#350/#351) */
+#ifdef GB_PCW
+#include "gbperrynet.h"
+#endif
 
 /* ---- terminal grid --------------------------------------------------------- */
 /* The grid has two sizes: WINDOWED (4x8 charset drawn straight to screen RAM - both
@@ -774,7 +777,7 @@ static void serial_modem_hangup(void)
 static unsigned char pn_seq;
 static unsigned char pn_channel;
 static unsigned char pn_conn;
-static unsigned char pn_fast_uart;
+static unsigned char pn_uart_profile;
 static unsigned char pn_last_status;
 static unsigned char pn_frame[PN_FRAME_MAX];
 static unsigned int pn_in_len;
@@ -941,27 +944,31 @@ __asm
 __endasm;
 }
 
-static unsigned char pn_uart_set(unsigned char fast)
+static unsigned char pn_uart_set(unsigned char profile)
 {
-    unsigned char payload[5], seq;
-    payload[0] = fast ? 0x00 : 0x80;          /* 19200 or 9600, little-endian */
-    payload[1] = fast ? 0x4B : 0x25;
+    unsigned char payload[5], seq, divisor;
+    payload[0] = 0x00; payload[1] = 0x4B; divisor = 7;  /* nominal 19200 -> PCW 17857 */
+    if (profile == GB_PERRYNET_PROFILE_9600) {
+        payload[0] = 0x80; payload[1] = 0x25; divisor = 13;
+    } else if (profile == GB_PERRYNET_PROFILE_41667) {
+        payload[1] = 0x96; divisor = 3;                 /* nominal 38400 -> PCW 41667 */
+    }
     payload[2] = payload[3] = payload[4] = 0; /* no RTS/CTS, do not save */
     seq = pn_tx(PN_OP_UART_SET, 0, payload, 5);
     if (!seq || !pn_wait_ack(seq, 0, 0, 60000)) return 0;
-    serial_set_divisor(fast ? 7 : 13);        /* PerryFi/PerryNet maps 19200 to 17857 */
+    serial_set_divisor(divisor);
     pn_uart_settle();
     pn_in_len = 0;
     pn_in_started = pn_in_esc = pn_in_overflow = 0;
-    pn_fast_uart = fast;
+    pn_uart_profile = profile;
     return 1;
 }
 
 static void pn_uart_restore(void)
 {
-    if (!pn_fast_uart) return;
-    if (!pn_uart_set(0)) serial_set_divisor(13);
-    pn_fast_uart = 0;
+    if (pn_uart_profile == GB_PERRYNET_PROFILE_9600) return;
+    if (!pn_uart_set(GB_PERRYNET_PROFILE_9600)) serial_set_divisor(13);
+    pn_uart_profile = GB_PERRYNET_PROFILE_9600;
 }
 
 static unsigned char pn_connect(const char *host, unsigned int port)
@@ -980,8 +987,8 @@ static unsigned char pn_connect(const char *host, unsigned int port)
     pn_last_status = 0xFF;
     pn_in_len = 0;
     pn_in_started = pn_in_esc = pn_in_overflow = 0;
-    pn_fast_uart = 0;
-    if (!pn_uart_set(1)) return 0;
+    pn_uart_profile = GB_PERRYNET_PROFILE_9600;
+    if (!pn_uart_set(gb_perrynet_profile())) return 0;
 
     payload[0] = (unsigned char)host_len;
     for (i = 0; i < host_len; i++) payload[1 + i] = (unsigned char)host[i];

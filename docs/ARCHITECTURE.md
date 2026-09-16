@@ -162,6 +162,8 @@ rules are:
 - on MSX2, `MSXMODE=6|7` selects the mode-specific kernel at the next boot;
 - on MSX2, `MSXMOUSE=TRUE|FALSE` selects mouse or joystick interpretation for
   the joystick port;
+- on PCW, `PERRYNET_BAUD=9600|17857|41667` selects the PerryNet serial profile
+  used by TELNET, NETTEST, WGET and Browser;
 - backdrop, wallpaper, and saver names may be **drive-qualified** (`A:NAME`,
   `B:NAME`, `C:NAME`) so the Settings app can point at either floppy or Albireo
   content explicitly;

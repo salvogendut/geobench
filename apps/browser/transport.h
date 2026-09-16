@@ -6,6 +6,8 @@
 #define BROWSER_TR_PORT port
 #endif
 #ifdef GB_PCW
+#include "gbperrynet.h"
+
 static volatile unsigned char ser_io;
 static unsigned char pcw_ser_inited;
 
@@ -138,7 +140,7 @@ static unsigned char serial_send(const unsigned char *buf, unsigned int len)
 #define PN_EVT_TCP_CLOSED      0x11
 #define PN_EVT_TCP_ERROR       0x12
 
-static unsigned char pn_seq, pn_channel, pn_conn, pn_fast_uart, pn_last_status;
+static unsigned char pn_seq, pn_channel, pn_conn, pn_uart_profile, pn_last_status;
 #ifdef BROWSER_PCW_FRAME_BUFFER
 #define pn_frame BROWSER_PCW_FRAME_BUFFER
 #else
@@ -270,24 +272,29 @@ static void pn_uart_settle(void) __naked
     ret
 __endasm; }
 
-static unsigned char pn_uart_set(unsigned char fast)
+static unsigned char pn_uart_set(unsigned char profile)
 {
-    unsigned char payload[5], seq;
-    payload[0] = fast ? 0x00 : 0x80; payload[1] = fast ? 0x4B : 0x25;
+    unsigned char payload[5], seq, divisor;
+    payload[0] = 0x00; payload[1] = 0x4B; divisor = 7;
+    if (profile == GB_PERRYNET_PROFILE_9600) {
+        payload[0] = 0x80; payload[1] = 0x25; divisor = 13;
+    } else if (profile == GB_PERRYNET_PROFILE_41667) {
+        payload[1] = 0x96; divisor = 3;
+    }
     payload[2] = payload[3] = payload[4] = 0;
     seq = pn_tx(PN_OP_UART_SET, 0, payload, 5);
     if (!seq || !pn_wait_ack(seq, 0, 0, 60000)) return 0;
-    serial_set_divisor(fast ? 7 : 13); pn_uart_settle();
+    serial_set_divisor(divisor); pn_uart_settle();
     pn_in_len = 0; pn_in_started = pn_in_esc = pn_in_overflow = 0;
-    pn_fast_uart = fast;
+    pn_uart_profile = profile;
     return 1;
 }
 
 static void pn_uart_restore(void)
 {
-    if (!pn_fast_uart) return;
-    if (!pn_uart_set(0)) serial_set_divisor(13);
-    pn_fast_uart = 0;
+    if (pn_uart_profile == GB_PERRYNET_PROFILE_9600) return;
+    if (!pn_uart_set(GB_PERRYNET_PROFILE_9600)) serial_set_divisor(13);
+    pn_uart_profile = GB_PERRYNET_PROFILE_9600;
 }
 
 static unsigned char tr_init(void)
@@ -304,9 +311,10 @@ static unsigned char tr_connect(void)
     unsigned char payload[HOST_MAX + 5], out[8], seq, n = 0;
     unsigned int out_len = sizeof(out);
     while (BROWSER_TR_HOST[n]) n++;
-    pn_seq = pn_channel = pn_conn = pn_fast_uart = 0;
+    pn_seq = pn_channel = pn_conn = 0;
+    pn_uart_profile = GB_PERRYNET_PROFILE_9600;
     pn_in_len = 0; pn_in_started = pn_in_esc = pn_in_overflow = 0;
-    if (!pn_uart_set(1)) return 0;
+    if (!pn_uart_set(gb_perrynet_profile())) return 0;
     payload[0] = n;
     { unsigned char i; for (i = 0; i < n; i++) payload[i + 1] = (unsigned char)BROWSER_TR_HOST[i]; }
     payload[n + 1] = (unsigned char)BROWSER_TR_PORT;

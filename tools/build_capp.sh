@@ -207,6 +207,12 @@ fi
 if grep -Rqs 'gbhtml\.h' "$APP"; then
     deps+=("$GB/gbhtml.h")
 fi
+if grep -Rqs 'gbcfg\.h' "$APP"; then
+    deps+=("$GB/gbcfg.h")
+fi
+if grep -Rqs 'gbperrynet\.h' "$APP"; then
+    deps+=("$GB/gbperrynet.h")
+fi
 if [ "$DIALOGS_FLAG" = "1" ] || [ "$PROMPT_FLAG" = "1" ] || [ "$PICKER_FLAG" = "1" ] || [ "$DOC_FLAG" = "1" ] || [ "$DOCRO_FLAG" = "1" ]; then
     deps+=("$GB/gbui_stub.c")
 fi

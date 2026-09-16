@@ -82,9 +82,9 @@ backdrop, dragging icons, opening apps and menus:
   not grow Settings. Starfield controls speed and star count; XMatrix controls
   binary/Kana glyphs and speed, plus its main color on CPC and in MSX 16-color
   mode; Mountain controls speed, peak count, and hold time. The MSX selector
-  includes a native-color swatch. On MSX2 the video
-  choices are labelled
-  **4 colors** and **16 colors** (Screen 6 and Screen 7).
+  includes a native-color swatch. On MSX2 the video choices are labelled
+  **4 colors** and **16 colors** (Screen 6 and Screen 7). On PCW it also
+  selects the PerryNet serial profile used by the TCP apps.
   **Return to Defaults** restores the complete target-specific configuration.
   MSX2 also exposes **Input device** (`Mouse` or `Joystick`), persisted as
   `MSXMOUSE=TRUE|FALSE`; the setting must match the device connected to the
