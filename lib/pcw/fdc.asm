@@ -18,7 +18,9 @@
 ;
 ; Ports: #00 = main status register, #01 = data register. #F8 cmds:
 ; 04 = FDC irq routing off (we poll the raw mirror), 05/06 = TC set/clear,
-; 09 = motor on. GEOBENCH runs DI.
+; 09 = motor on. Each sector transfer preserves IFF2 and runs DI: once the
+; preemptive PCW timer is installed, even its short ISR can overrun the real
+; controller's MFM byte window. Emulator FDCs generally hide that timing bug.
 ;
 ;   pcwfdc_init                     SPECIFY (ND=1) + motor + recalibrate
 ;   pcwfdc_setunit A=0/1            select drive (B double-steps CF2 media)
@@ -117,6 +119,9 @@ fdc_ncn
 ; CF set = sector read. Three attempts, recalibrating between them.
 ; pcwfdc_read1: one attempt, no retry - for presence probes.
 pcwfdc_read1
+                ld    a,i                     ; P/V = caller's IFF2
+                push  af
+                di                            ; atomic through command/data/result
                 ld    (fdr_dst),hl
                 ld    a,c
                 and   1
@@ -128,6 +133,9 @@ pcwfdc_read1
                 ld    b,1
                 jr    fdr_try
 pcwfdc_read
+                ld    a,i                     ; preserve boot-time DI vs runtime EI
+                push  af
+                di
                 ld    (fdr_dst),hl
                 ld    a,c
                 and   1
@@ -141,13 +149,13 @@ fdr_try
                 push  bc
                 call  fdr_once
                 pop   bc
-                ret   c
+                jp    c,fdc_irq_ok
                 push  bc
                 call  fdc_recal               ; re-home before retrying
                 pop   bc
                 djnz  fdr_try
                 or    a                       ; NC = hard failure
-                ret
+                jp    fdc_irq_fail
 
 fdr_once
                 ld    a,(fdc_track)           ; seek only when the head moves
@@ -213,6 +221,9 @@ fdo_fail
 ; pcwfdc_write: C = side, D = track, E = sector R, HL = 512-byte source.
 ; CF set = sector written. Three attempts, recalibrating between them.
 pcwfdc_write
+                ld    a,i                     ; preserve boot-time DI vs runtime EI
+                push  af
+                di                            ; writes have the same byte deadline
                 ld    (fdr_dst),hl
                 ld    a,c
                 and   1
@@ -226,13 +237,13 @@ fdw_try
                 push  bc
                 call  fdw_once
                 pop   bc
-                ret   c
+                jp    c,fdc_irq_ok
                 push  bc
                 call  fdc_recal
                 pop   bc
                 djnz  fdw_try
                 or    a
-                ret
+                jp    fdc_irq_fail
 
 fdw_once
                 ld    a,(fdc_track)           ; seek only when the head moves
@@ -292,6 +303,29 @@ fdw_tx
 fdw_bad
                 call  fdc_result
 fdw_fail
+                or    a
+                ret
+
+; Restore the interrupt state captured by the public sector entry point while
+; returning its carry-only success contract. EI is placed immediately before
+; RET so an enabled caller cannot be preempted inside this resident epilogue.
+fdc_irq_ok
+                pop   af                      ; P/V still holds entry IFF2
+                jp    po,fdc_irq_ok_di
+                scf
+                ei
+                ret
+fdc_irq_ok_di
+                scf
+                ret
+
+fdc_irq_fail
+                pop   af
+                jp    po,fdc_irq_fail_di
+                or    a                       ; clear carry
+                ei
+                ret
+fdc_irq_fail_di
                 or    a
                 ret
 

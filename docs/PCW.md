@@ -141,8 +141,8 @@ directory layout. `k_drive_poll` uses a single-sector probe for media presence.
 
 On real PCW hardware, automatic desktop time sync needs a PerryFi card running
 the PerryNet firmware. Time sync is disabled by default on distributed disks
-(`TIMESYNC=false`). Configure WiFi in PerryNet first, then opt in by changing
-the GEOBENCH boot config to:
+(`TIMESYNC=false`). Configure WiFi in PerryNet first, then enable **Time sync**
+in the Settings app. The setting is applied at the next boot and is stored as:
 
 ```text
 TIMESYNC=true
