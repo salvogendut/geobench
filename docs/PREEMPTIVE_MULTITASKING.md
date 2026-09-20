@@ -171,11 +171,19 @@ and titled `Copying`; closing it cancels the operation and removes the partial
 file. Other File Manager instances suspend storage actions while the job owns
 the shared transfer context. Directory scans process at most four entries per
 frame and insertion-order entries as they arrive; the free-space query is a
-separate frame step. The completed title and listing are published together in
-one repaint; partial scan state is never exposed. Repaint callbacks use generic
-APP placeholders and perform no storage I/O. `GBAPICK.MOD` then probes and draws
-at most one visible embedded APP icon per frame. Normal cooperative builds retain
-their original synchronous File Manager path.
+separate frame step. PCW obtains ordinary short-file sizes directly from the
+first extent and falls back to a complete extent scan only for files that can
+exceed 16 KiB. The completed
+title and listing are published together in one repaint; partial scan state is
+never exposed. Repaint callbacks use generic APP placeholders and perform no
+storage I/O. `GBAPICK.MOD` then probes and draws at most one visible embedded APP
+icon per frame; PCW spaces those probes by two quiet seconds so floppy reads do
+not monopolize interaction. Its first successful probe also stores the native
+four-colour icon in a lazily borrowed 16 KiB page. A standard 180K PCW disk has
+at most 64 directory entries, so every icon fits; subsequent repaints and short
+scrollbar moves blit retained RAM rather than reopening APP files. The cache is
+invalidated when the directory changes and released when the window closes.
+Normal cooperative builds retain their original synchronous File Manager path.
 
 Publishing a newly opened opaque managed window uses `GB_REPAINTTOP`, so the
 window is drawn without invoking Desktop and every lower window's repaint

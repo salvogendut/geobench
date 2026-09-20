@@ -95,7 +95,7 @@ if [ "$PREEMPTIVE" = "1" ]; then
 else
     APPDEFS="-DGB_PCW" DATA_LOC=0x7100 DOC=1 TITLEBAR=1 tools/build_capp.sh apps/desktop build/pcw/DESKTOP.RAW
 fi
-APPDEFS="-DGB_PCW" APP_CFLAGS="--max-allocs-per-node 5000" DATA_LOC=0x7960 DOC=1 SCROLL=1 REPAINTTOP=1 tools/build_capp.sh apps/filemgr build/pcw/FILEMGR.RAW
+APPDEFS="-DGB_PCW" APP_CFLAGS="--max-allocs-per-node 5000" DATA_LOC=0x79F0 DOC=1 SCROLL=1 REPAINTTOP=1 tools/build_capp.sh apps/filemgr build/pcw/FILEMGR.RAW
 APP_ICON=apps/notepad/icon.asm GBLIB_SRC="$NOTEPAD_GBLIB" APPDEFS="-DGB_PCW $NOTEPAD_APPDEFS" APP_CFLAGS="$NOTEPAD_CFLAGS" DATA_LOC="$NOTEPAD_DATA_LOC" DOC=1 REPAINTTOP="$NOTEPAD_SCROLL" tools/build_capp.sh apps/notepad build/pcw/NOTEPAD.RAW
 APPDEFS="-DGB_PCW" APP_CFLAGS="--opt-code-size --max-allocs-per-node 20000" DATA_LOC=0x7C40 DIALOGS=1 STEPPER=1 SELECTOR=1 ACTIONS=1 TITLEBAR=1 GBWIN_DRAG_ONLY=1 tools/build_capp.sh apps/settings build/pcw/SETTINGS.RAW
 APP_ICON=apps/viewer/icon.asm GBLIB_SRC="$VIEWER_GBLIB" APPDEFS="-DGB_PCW" DATA_LOC=0x6A30 DOCRO=1 SCROLL16=1 REPAINTTOP=1 tools/build_capp.sh apps/viewer build/pcw/VIEWER.RAW

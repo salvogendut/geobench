@@ -217,8 +217,7 @@ fdn_have
                 or    (hl)
                 pop   hl
                 jr    nz,fdn_loop
-                push  hl                      ; name -> fs_ent_name (strip attr bits)
-                inc   hl
+                inc   hl                      ; name -> fs_ent_name (strip attr bits)
                 ld    de,fs_ent_name
                 ld    b,11
 fdn_name
@@ -228,17 +227,23 @@ fdn_name
                 inc   hl
                 inc   de
                 djnz  fdn_name
-                pop   hl
-                push  hl                      ; attr: t1' (RO) -> FAT-ish bit 0
-                ld    de,9
-                add   hl,de
+                dec   hl                      ; entry +12 -> +9: t1' (RO)
+                dec   hl
+                dec   hl
                 ld    a,(hl)
                 rlca
                 and   1
                 ld    (fs_ent_attr),a
-                pop   hl
-                call  fsp_calcsize            ; all-extent size -> fs_ent_size
-                scf
+                ld    de,6                    ; +9 -> +15: RC
+                add   hl,de
+                ld    a,(hl)
+                cp    #80                     ; a full 16K extent may continue
+                jr    z,fdn_fullsize
+                ld    c,a                     ; fast path: max extent 0, RC in C
+                xor   a
+                jr    fscs_emit
+fdn_fullsize
+                call  fsp_calcsize            ; full first extent: find continuations
                 ret
 
 ; fsp_calcsize: size of the file named fs_ent_name -> fs_ent_size (dword).
@@ -283,9 +288,12 @@ fscs_skip
                 pop   hl
                 jr    fscs_loop
 fscs_done
+                ld    a,(fscs_rc)
+                ld    c,a
+                ld    a,(fscs_max)
+fscs_emit
                 ld    hl,0                    ; size = max*16384 + rc*128
                 ld    b,0                     ; B = bits 16-23
-                ld    a,(fscs_max)
                 or    a
                 jr    z,fscs_rcpart
                 ld    de,16384
@@ -297,10 +305,10 @@ fscs_exnc
                 dec   a
                 jr    nz,fscs_exadd
 fscs_rcpart
-                ld    a,(fscs_rc)             ; DE = RC * 128
+                ld    a,c                     ; DE = RC * 128
                 srl   a
                 ld    d,a
-                ld    a,(fscs_rc)
+                ld    a,c
                 rrca
                 and   #80
                 ld    e,a
@@ -313,6 +321,7 @@ fscs_rcnc
                 ld    (fs_ent_size+2),a
                 xor   a
                 ld    (fs_ent_size+3),a
+                scf
                 ret
 
 ; --- load ---------------------------------------------------------------------
