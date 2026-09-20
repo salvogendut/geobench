@@ -14,7 +14,11 @@
 #define APPICON_H      32
 
 #ifdef GB_PREEMPTIVE
+#ifdef GB_PCW
+#define APP_PROBE_MAX  512
+#else
 #define APP_PROBE_MAX  1024
+#endif
 #define APPICON_LEN    (APPICON_WB * APPICON_H)
 #define APPICON7_WB    16
 #define APPICON7_LEN   (APPICON7_WB * APPICON_H)
@@ -89,9 +93,9 @@ static void name_disp(char *dst, const char *raw, unsigned char dir)
 static unsigned char has_gbap(const char *raw)
 {
     unsigned char version;
-#if defined(GB_MSX2) || defined(GB_PCW)
+    unsigned char *entry;
+    unsigned int off, len, total;
     unsigned int got;
-#endif
 
     gb_set_name(raw);
 #if defined(GB_MSX2) || defined(GB_PCW)
@@ -106,6 +110,7 @@ static unsigned char has_gbap(const char *raw)
     /* The low-RAM probe borrows an app page, so this PAGE_DATA picker remains
      * mapped even when the candidate occupies nearly its full 16 KiB. */
     if (!gb_app_probe((char *)PROBE_BUF)) return 0;
+    got = APP_PROBE_MAX;
 #endif
 
     if (PROBE_BUF[0] != 0xC3 || PROBE_BUF[3] != 'G'
@@ -115,11 +120,20 @@ static unsigned char has_gbap(const char *raw)
     if (version == 1)
         return (unsigned char)(PROBE_BUF[8] == 1
             && PROBE_BUF[9] == APPICON_WB && PROBE_BUF[10] == APPICON_H);
-    /* GBAP v2 requires the portable fallback in resource slot zero. */
-    return (unsigned char)(version == 2 && PROBE_BUF[8]
-        && PROBE_BUF[APPICON_OFF] == 1
-        && PROBE_BUF[APPICON_OFF + 1] == APPICON_WB
-        && PROBE_BUF[APPICON_OFF + 2] == APPICON_H);
+    /* GBAP v2 requires the portable fallback in resource slot zero. The PCW
+     * only reads the first sector; a later 16-colour resource may extend past
+     * it, but the fallback itself must be complete in the probe. */
+    if (version != 2 || !PROBE_BUF[8] || PROBE_BUF[8] > 2
+        || PROBE_BUF[9] != 8) return 0;
+    total = (unsigned int)PROBE_BUF[10]
+            | ((unsigned int)PROBE_BUF[11] << 8);
+    entry = PROBE_BUF + APPICON_OFF;
+    len = (unsigned int)entry[4] | ((unsigned int)entry[5] << 8);
+    off = (unsigned int)entry[6] | ((unsigned int)entry[7] << 8);
+    return (unsigned char)(entry[0] == 1
+        && entry[1] == APPICON_WB && entry[2] == APPICON_H && !entry[3]
+        && len == APPICON_WB * APPICON_H && off + len <= total
+        && off + len <= got);
 }
 
 #if defined(GB_PCW) && defined(GB_PREEMPTIVE)
@@ -186,14 +200,18 @@ unsigned char gb_drawappicon(const char *raw, unsigned char x,
     } else if (data[7] == 2) {
         total = (unsigned int)data[10] | ((unsigned int)data[11] << 8);
         if (!data[8] || data[8] > 2 || data[9] != 8
-            || data[12] != APPICON_OFF || data[13] != 0 || total > got)
+            || data[12] != APPICON_OFF || data[13] != 0
+#ifndef GB_PCW
+            || total > got
+#endif
+            )
             return 0;
         entry = data + APPICON_OFF;
         off = (unsigned int)entry[6] | ((unsigned int)entry[7] << 8);
         len = (unsigned int)entry[4] | ((unsigned int)entry[5] << 8);
         if (entry[0] != APPICON_MODE1 || entry[1] != APPICON_WB
             || entry[2] != APPICON_H || entry[3] || len != APPICON_LEN
-            || off + len > total)
+            || off + len > total || off + len > got)
             return 0;
 #ifdef GB_MSX2
         if (MSX_SCRMOD == 7 && data[8] == 2) {

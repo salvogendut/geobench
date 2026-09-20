@@ -577,7 +577,11 @@ kw_title        equ   #12D1        ; 24-byte window-title scratch, relocated to 
 ; or NC at end of directory. fs_ent_* are resident, so no page swap is needed;
 ; the floppy backend is di-safe and uses its own resident buffers.
 gb_fs_dir_first
+                ifdef PLATFORM_PCW
+                call  fs_dir_first_quick
+                else
                 call  fs_dir_first
+                endif
                 jr    gdir_done
 gb_fs_dir_next
                 call  fs_dir_next
@@ -2752,6 +2756,10 @@ ds_moved        ld    a,(POLL_MX)                ; record the new last position
                 ld    a,1                          ; show a box that follows the pointer
                 ld    (cur_supp),a
                 ld    (ghost_on),a
+                ifdef PLATFORM_PCW
+                ld    hl,#FFFF                     ; the ghost borrows fs_secbuf
+                ld    (fsp_cslsn),hl               ; without changing its dir cache
+                endif
                 ld    a,GHOST_W                   ; the box's save-under is fixed-size in
                 ld    (sb_w),a                     ; the idle IDE sector buffer; set once
                 ld    a,GHOST_H

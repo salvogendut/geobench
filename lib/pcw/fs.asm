@@ -29,9 +29,10 @@
 ; files live in the root (the "ship content flat" model). CF2 and CF2DD are
 ; both read/write; the allocator handles 8-bit and 16-bit allocation entries.
 ;
-; Sector cache: one sector in fs_secbuf (#1800), invalidated at every public
-; entry point - fs_secbuf is aliased by other users (the drag ghost's
-; save-under), so nothing may trust it across calls.
+; Sector cache: fs_secbuf (#1800) remains the live transfer sector. The first
+; four directory sectors are also retained in the dedicated 2 KiB fsam_buf
+; (#1A00), so bounded calls do not turn one directory walk into repeated real
+; floppy reads. The drag ghost invalidates only the live-sector tag.
 ; ---------------------------------------------------------------------------
 
 fs_init
@@ -45,6 +46,7 @@ fs_init
 
 ; fsp_mount: read the disc spec of the current unit and set the geometry.
 fsp_mount
+                call  fsp_dircache_clear
                 ld    hl,#FFFF
                 ld    (fsp_cslsn),hl
                 xor   a                       ; read the disc spec: T0/R1 raw
@@ -189,12 +191,20 @@ fs_sysdir_leave
 ; --- directory enumeration ---------------------------------------------------
 ; fs_dir_first / fs_dir_next -> CF set = entry ready in fs_ent_*, NC = done.
 ; Reports each FILE once (extent 0 entries only); size spans all extents.
+; fs_dir_first_quick is the app-facing variant: callers do not consume
+; fs_ent_size, so a full first extent reports 16 KiB without rescanning the
+; complete directory. File loads still process every extent normally.
 fs_dir_first
+                xor   a
+                jr    fdf_mode
+fs_dir_first_quick
+                ld    a,1
+fdf_mode
+                ld    (fsd_quick),a
+                call  fsp_dircache_clear      ; refresh after a possible disc swap
                 ld    hl,0
                 ld    (fsd_idx),hl
 fs_dir_next
-                ld    hl,#FFFF
-                ld    (fsp_cslsn),hl
 fdn_loop
                 ld    hl,fsd_idx
                 call  fsp_scan_next
@@ -237,9 +247,13 @@ fdn_name
                 ld    de,6                    ; +9 -> +15: RC
                 add   hl,de
                 ld    a,(hl)
+                ld    c,a
                 cp    #80                     ; a full 16K extent may continue
+                jr    nz,fdn_extent_size
+                ld    a,(fsd_quick)
+                or    a
                 jr    z,fdn_fullsize
-                ld    c,a                     ; fast path: max extent 0, RC in C
+fdn_extent_size
                 xor   a
                 jr    fscs_emit
 fdn_fullsize
@@ -1241,12 +1255,67 @@ fsp_rdsec
                 scf
                 ret
 frs_load
+                push  hl                      ; directory sectors 0..3 have a
+                ld    a,h                     ; persistent copy in fsam_buf
+                or    a
+                jr    nz,frs_disk_pop
+                ld    a,l
+                cp    4
+                jr    nc,frs_disk_pop
+                ld    e,a
+                ld    d,0
+                ld    hl,fsp_dvalid
+                add   hl,de
+                ld    a,(hl)
+                or    a
+                jr    z,frs_disk_pop
+                pop   de                      ; DE = requested directory lsn
+                ld    a,e
+                add   a,a
+                add   a,#1A                   ; cache sector at #1A00 + lsn*512
+                ld    h,a
+                ld    l,0
+                push  de
+                ld    de,fs_secbuf
+                ld    bc,512
+                ldir
+                pop   hl
                 ld    (fsp_cslsn),hl
+                scf
+                ret
+frs_disk_pop
+                pop   hl
+                ld    (fsp_cslsn),hl
+                push  hl
                 call  fsp_lsn2ts
 frs_have_ts
                 ld    hl,fs_secbuf
                 call  pcwfdc_read
-                ret   c
+                pop   de                      ; requested lsn
+                jr    nc,frs_fail
+                ld    a,d                     ; retain the first four directory
+                or    a                       ; sectors for later bounded calls
+                jr    nz,frs_ok
+                ld    a,e
+                cp    4
+                jr    nc,frs_ok
+                push  de
+                ld    hl,fs_secbuf
+                add   a,a
+                add   a,#1A
+                ld    d,a
+                ld    e,0
+                ld    bc,512
+                ldir
+                pop   de
+                ld    hl,fsp_dvalid
+                ld    d,0
+                add   hl,de
+                ld    (hl),1
+frs_ok
+                scf
+                ret
+frs_fail
                 ld    hl,#FFFF                ; failed: nothing cached
                 ld    (fsp_cslsn),hl
                 or    a
@@ -1255,6 +1324,15 @@ frs_have_ts
 ; fsp_wrsec: write fs_secbuf to data-area lsn HL (the cache stays valid -
 ; the buffer now matches the disc). CF ok.
 fsp_wrsec
+                push  hl                      ; directory writes invalidate the
+                ld    a,h                     ; retained directory sectors
+                or    a
+                jr    nz,fws_cache_ok
+                ld    a,l
+                cp    4
+                call  c,fsp_dircache_clear
+fws_cache_ok
+                pop   hl
                 ld    (fsp_cslsn),hl
                 call  fsp_lsn2ts
                 ld    hl,fs_secbuf
@@ -1263,6 +1341,22 @@ fsp_wrsec
                 ld    hl,#FFFF
                 ld    (fsp_cslsn),hl
                 or    a
+                ret
+
+; Clear the retained directory sectors and invalidate the live transfer tag.
+; Called on mount, explicit directory refresh, and a directory-sector write.
+fsp_dircache_clear
+                ld    hl,#FFFF
+                ld    (fsp_cslsn),hl
+                xor   a
+                ld    hl,fsp_dvalid
+                ld    (hl),a
+                inc   hl
+                ld    (hl),a
+                inc   hl
+                ld    (hl),a
+                inc   hl
+                ld    (hl),a
                 ret
 
 ; fsp_lsn2ts: HL = data-area lsn -> C = side, D = cylinder, E = sector.
@@ -1363,6 +1457,8 @@ fsp_spb         db    2
 fsp_al16        db    0
 fsp_scan_idx    db    0
 fsd_idx         dw    0
+fsd_quick       db    0
+fsp_dvalid      ds    4
 fscs_e          dw    0
 fscs_max        db    0
 fscs_rc         db    0

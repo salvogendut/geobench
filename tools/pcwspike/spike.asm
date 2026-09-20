@@ -27,6 +27,7 @@
 ; -----------------------------------------------------------------------
 
 BACKDROP_TILE   equ   1
+TITLEBAR_TILE   equ   0
 CUR_LOW         equ   testspr
 fs_secbuf       equ   #1800        ; the kernel's sector buffer home (lowram)
 

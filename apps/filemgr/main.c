@@ -153,7 +153,7 @@ static const char appicon_modname[11] = {
 static unsigned char icon_req_raw, icon_req_x, icon_req_y;
 static unsigned char icon_scan_pos, icon_scan_col;
 #ifdef GB_PCW
-#define APPICON_PROBE_DELAY 100       /* two quiet seconds between floppy probes */
+#define APPICON_FIRST_DELAY 25        /* publish the window before a short icon batch */
 static unsigned char icon_probe_wait;
 static unsigned char icon_cache_page;
 #endif
@@ -936,7 +936,7 @@ static void icon_scan_reset(void)
         ? (unsigned char)(CT_X + (CELL_W - 8) / 2) : CT_X;
     icon_req_y = CT_Y + 1;
 #ifdef GB_PCW
-    icon_probe_wait = APPICON_PROBE_DELAY;
+    icon_probe_wait = APPICON_FIRST_DELAY;
 #endif
 }
 #endif
@@ -1063,9 +1063,6 @@ static unsigned char appicon_step(void)
             gb_curhide();
             icons[raw] = module_draw_icon()
                 ? (unsigned char)(APPICON_EMBEDDED | ICON_APP) : ICON_APP;
-#ifdef GB_PCW
-            icon_probe_wait = APPICON_PROBE_DELAY;
-#endif
             gb_curshow();
         }
     }
