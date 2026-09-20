@@ -111,6 +111,14 @@ drag-copy, Paint saves, and the Viewer's big pictures work. The CF2DD allocator
 uses the format's 16-bit block entries. Sizes are 128-byte CP/M records
 (`#1A`-padded tails).
 
+The first four directory sectors are retained in the dedicated 2 KiB low-RAM
+directory buffer. This keeps frame-bounded enumeration and chunked reads from
+re-reading the same physical directory sectors on every frame. Writes
+invalidate affected cached directory data, and a new listing refreshes it so a
+changed floppy is still detected. App-facing enumeration omits exact
+multi-extent size calculation because no app consumes it; direct filesystem
+callers and file loads retain complete extent handling.
+
 The 1985 emulator detects an EDSK image's track and side geometry when it is
 inserted. GEOBENCH independently reads the PCW disc specification at track 0,
 sector 1 when switching drives, then selects the correct head, block size, and

@@ -171,17 +171,21 @@ and titled `Copying`; closing it cancels the operation and removes the partial
 file. Other File Manager instances suspend storage actions while the job owns
 the shared transfer context. Directory scans process at most four entries per
 frame and insertion-order entries as they arrive; the free-space query is a
-separate frame step. PCW obtains ordinary short-file sizes directly from the
-first extent and falls back to a complete extent scan only for files that can
-exceed 16 KiB. The completed
-title and listing are published together in one repaint; partial scan state is
-never exposed. Repaint callbacks use generic APP placeholders and perform no
-storage I/O. `GBAPICK.MOD` then probes and draws at most one visible embedded APP
-icon per frame; PCW spaces those probes by two quiet seconds so floppy reads do
-not monopolize interaction. Its first successful probe also stores the native
-four-colour icon in a lazily borrowed 16 KiB page. A standard 180K PCW disk has
-at most 64 directory entries, so every icon fits; subsequent repaints and short
-scrollbar moves blit retained RAM rather than reopening APP files. The cache is
+separate frame step. PCW retains the first four CP/M directory sectors in the
+dedicated 2 KiB low-RAM directory buffer. Bounded enumeration, free-space
+calculation, chunked file lookup, and APP-icon lookup therefore reuse those
+sectors instead of restarting real floppy reads. The app-facing enumeration
+path also skips exact multi-extent size calculation because no app consumes
+that value; raw filesystem callers retain it, and file loads still process all
+extents. The completed title and listing are published together in one repaint;
+partial scan state is never exposed. Repaint callbacks use generic APP
+placeholders and perform no storage I/O. `GBAPICK.MOD` then probes and draws at
+most one visible embedded APP icon per frame. PCW waits briefly for the window
+to appear, then completes a compact probe batch using one 512-byte data-sector
+read per APP. Its first successful probe also stores the native four-colour icon
+in a lazily borrowed 16 KiB page. A standard 180K PCW disk has at most 64
+directory entries, so every icon fits; subsequent repaints and short scrollbar
+moves blit retained RAM rather than reopening APP files. The cache is
 invalidated when the directory changes and released when the window closes.
 Normal cooperative builds retain their original synchronous File Manager path.
 

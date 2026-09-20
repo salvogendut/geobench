@@ -65,15 +65,21 @@ Implemented:
   the shared filesystem context;
 - directory scans process at most four entries per frame and insert each entry
   directly into the sorted display order;
-- PCW reads a short file's size from its first extent and scans the complete
-  directory only when a full 16 KiB extent can have continuations;
+- PCW retains the first four CP/M directory sectors in the dedicated 2 KiB
+  low-RAM directory buffer. Bounded enumeration, free-space calculation,
+  chunked file lookup, and APP-icon lookup therefore reuse RAM instead of
+  restarting physical directory reads;
+- the app-facing PCW directory API does not calculate the unused exact size of
+  multi-extent files. Raw filesystem callers retain the exact-size path, while
+  file loads continue to process every extent normally;
 - the free-space query runs as a separate frame step after enumeration;
 - opening a drive or directory leaves the existing screen intact during the
   scan and publishes the completed title and listing in one window repaint;
 - embedded `.APP` icons are probed and drawn one visible slot per frame through
   `GBAPICK.MOD`; repaint callbacks perform no storage I/O;
-- PCW waits two quiet seconds before and between embedded-icon probes so real
-  floppy input is not starved by continuous header reads;
+- PCW waits briefly until the completed window is visible, then probes visible
+  APP icons one per frame as a finite batch. Each probe reads only the first
+  512-byte sector containing the portable four-colour icon;
 - after the first successful PCW probe, File Manager retains the native icon in
   a lazily borrowed 16 KiB page. All 64 entries possible on a standard 180K
   disk fit in that cache, which is released on relist or window close;
@@ -84,9 +90,9 @@ Implemented:
 
 Remaining risks:
 
-- each directory entry and APP probe still requires one atomic backend
-  operation on the root task; slow firmware cannot be preempted inside that
-  operation;
+- each uncached directory sector and APP-icon data sector remains one atomic
+  backend operation on the root task; the FDC transfer itself cannot be
+  preempted;
 - a missing `GBAPICK.MOD` leaves the generic APP icon, as intended, but needs a
   cross-target runtime check;
 - multiple File Manager windows serialize scans and copies through the shared
