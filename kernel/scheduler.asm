@@ -233,7 +233,7 @@ sched_context_restore
                 ifdef PLATFORM_MSX
                 jp    sched_irq_chain          ; finish through the saved DOS IM1 handler
                 else
-                jp    CPC_FW_IRQ               ; finish the IRQ in the restored task context
+                jp    sched_irq_chain          ; finish through this machine's firmware handler
                 endif
                 endif
 sched_restore_yield
@@ -377,27 +377,30 @@ sched_irq_chain
                 jp    0                       ; patched with the original DOS IRQ target
                 else
 ; CPC IM 1 enters through writable RAM at #0038. The scheduler runs before the
-; firmware tick. Fast paths tail-call B941 immediately. A context switch marks
-; the shared restore path, which tail-calls B941 after the target registers and
-; stack are active. Firmware therefore always sees its native interrupt stack
-; contract and returns directly to the selected task. External interrupts skip
-; scheduler work because B941 owns a different stack contract for them.
+; firmware tick. Preserve and chain through the target already installed there:
+; the CPC6128 firmware uses #B941, the CPC464 uses #B939, and replacement lower
+; ROMs may install another compatible handler. A context switch marks the shared
+; restore path, which tail-calls that saved target after the selected registers
+; and stack are active. Firmware therefore always sees its native interrupt
+; stack contract. External interrupts skip scheduler work because the firmware
+; handler owns a different stack contract for them.
 CPC_IRQ_VECTOR  equ #0038
-CPC_FW_IRQ      equ #B941
 
 sched_irq_install
+                ld    hl,(CPC_IRQ_VECTOR+1)
+                ld    (sched_irq_chain+1),hl
                 ld    hl,sched_irq_vector
                 jr    sched_irq_set_vector
 
-; Restore the standard firmware vector before returning to BASIC/DOS.
+; Restore the machine's original firmware vector before returning to BASIC/DOS.
 sched_irq_uninstall
-                ld    hl,CPC_FW_IRQ
+                ld    hl,(sched_irq_chain+1)
 sched_irq_set_vector
-                di
-                ld    a,#C3
-                ld    (CPC_IRQ_VECTOR),a
                 ld    (CPC_IRQ_VECTOR+1),hl
                 ret
+
+sched_irq_chain
+                jp    0                       ; patched with the original CPC IRQ target
                 endif
                 endif
 
@@ -407,7 +410,7 @@ sched_irq_vector
                 ex    af,af'
                 jr    nc,sched_irq_normal
                 ex    af,af'                  ; restore app AF and leave firmware's stack untouched
-                jp    CPC_FW_IRQ
+                jp    sched_irq_chain
 sched_irq_normal
                 ex    af,af'
                 endif
@@ -438,7 +441,7 @@ sched_irq_fast
                 ifdef PLATFORM_MSX
                 jp    sched_irq_chain
                 else
-                jp    CPC_FW_IRQ
+                jp    sched_irq_chain
                 endif
                 endif
 
