@@ -42,6 +42,7 @@ base          0x14D2  0x14FE  fs_request_state        -             FS dispatch 
 base          0x14FF  0x14FF  video_mode_hint         -             high bit valid, low bits screen mode; paged modules preserve fullscreen Mode 2
 base          0x1500  0x16FF  cursor_sprite_picedit   -             loaded cursor sprite plus CPC PICEDIT helper in the sector-overread guard
 base          0x1700  0x17FF  ui_transfer             modal_1700    GBUI request/result block
+base          0x1706  0x1707  appicon_cache_args      modal_1700    PCW GBAPICK cache page/slot; transient
 base          0x1700  0x1712  module_control_header   modal_1700    GBFAT/FLOPPYSV/M4SAVE control header; never live during GBUI
 base          0x1710  0x174F  module_path_buffer      modal_1700    M4SAVE/FLOPPYSV card path prefix; never live during GBUI
 base          0x1800  0x19FF  fs_sector_buffer        -             shared 512-byte sector buffer

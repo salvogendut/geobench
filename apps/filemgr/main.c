@@ -133,7 +133,11 @@ static unsigned char fs_px, fs_py, fs_pw, fs_ph;   /* geometry saved across Full
    path index through it. Capped at MAX_ENT (the shipped floppy/card directories are
    small; a larger directory shows the first MAX_ENT sorted). Also spares the FAT a
    re-stream per drawn item. */
+#ifdef GB_PCW
+#define MAX_ENT 96   /* 180K media has 64 directory slots; leave room for its RAM icon cache */
+#else
 #define MAX_ENT 104
+#endif
 /* Flat 11-byte name records (NOT char[MAX_ENT][11]): a 2D char array indexed by an
    8-bit var makes SDCC compute the *11 offset in 8 bits, which wraps past entry 23.
    NAME_AT forces the multiply to 16-bit. */
@@ -148,6 +152,11 @@ static const char appicon_modname[11] = {
 };
 static unsigned char icon_req_raw, icon_req_x, icon_req_y;
 static unsigned char icon_scan_pos, icon_scan_col;
+#ifdef GB_PCW
+#define APPICON_PROBE_DELAY 100       /* two quiet seconds between floppy probes */
+static unsigned char icon_probe_wait;
+static unsigned char icon_cache_page;
+#endif
 
 /* Marshal the queued icon request entirely in assembly. Besides being smaller
    than SDCC's four-argument loop, this makes the low-RAM handoff explicit. */
@@ -182,12 +191,69 @@ __asm
     ld a,(_view)
     xor a,#1
     ld (#0x1703),a
+#ifdef GB_PCW
+    ld a,(_icon_cache_page)
+    ld (#0x1706),a
+    ld a,(_icon_req_raw)
+    ld (#0x1707),a
+#endif
     ld a,#0x80
     call #0x80AE
+#ifdef GB_PCW
+    ld a,(#0x1706)
+    ld (_icon_cache_page),a
+#endif
     ld a,c
     ret
 __endasm;
 }
+
+#ifdef GB_PCW
+static void icon_cache_release(void) __naked
+{
+__asm
+    ld a,(_icon_cache_page)
+    or a
+    ret z
+    ld (#0x130B),a
+    xor a
+    ld (#0x1348),a
+    call #0x8069
+    xor a
+    ld (_icon_cache_page),a
+    ret
+__endasm;
+}
+
+static void icon_cache_draw(void) __naked
+{
+__asm
+    ld a,(_icon_cache_page)
+    ld (#0x130B),a
+    xor a
+    ld (#0x1348),a
+    ld a,(_icon_req_raw)
+    ld h,a
+    ld l,#0
+    ld a,(_view)
+    or a
+    jr nz,001$
+    ld l,#64
+    ld e,#16
+    jr 002$
+001$:
+    ld e,#32
+002$:
+    ld a,(_icon_req_x)
+    ld b,a
+    ld a,(_icon_req_y)
+    ld c,a
+    ld d,#8
+    call #0x8054
+    ret
+__endasm;
+}
+#endif
 #endif
 
 /* dir_seek: position the dir cursor at absolute index idx; return its name (0 if
@@ -645,8 +711,21 @@ static void draw_entry_type(unsigned char raw, unsigned char x, unsigned char y,
 #ifdef GB_PREEMPTIVE
     /* Repaints are storage-free. The frame job reloads and draws visible embedded
        icons after this generic placeholder has been painted. */
+#ifdef GB_PCW
+    if (slot == ICON_APP && (state & APPICON_EMBEDDED)) {
+        if (icon_cache_page && raw < 64) {
+            icon_req_raw = raw;
+            icon_req_x = x;
+            icon_req_y = y;
+            icon_cache_draw();
+            return;
+        }
+        icons[raw] = (unsigned char)(state | APPICON_PENDING);
+    }
+#else
     if (slot == ICON_APP && (state & APPICON_EMBEDDED))
         icons[raw] = (unsigned char)(state | APPICON_PENDING);
+#endif
     if (half) gb_icon_half(slot, x, y);
     else      gb_icon(slot, x, y);
 #else
@@ -713,6 +792,9 @@ static void draw(void);
    full repaint and preventing entries moving visibly as sorting progresses. */
 static void list_start(void)
 {
+#ifdef GB_PCW
+    icon_cache_release();
+#endif
     total = 0; top = 0; nsel = 0; free_known = 0;
     title_buf[0] = 'R'; title_buf[1] = 'e'; title_buf[2] = 'a'; title_buf[3] = 'd';
     title_buf[4] = 'i'; title_buf[5] = 'n'; title_buf[6] = 'g'; title_buf[7] = 0;
@@ -786,69 +868,78 @@ static void build_list(void)
 }
 #endif
 
+static void draw_list_row(unsigned char i)
+{
+    unsigned char y, p, raw, up = up_avail();
+    unsigned char dt = disp_total();
+    p = (unsigned char)(top + i);
+    y = CT_Y + i * ROW_H;
+    gb_fill(CT_X, y, CT_W, ROW_H, 0);          /* clear stale rows/icons after scroll/repaint */
+    if (p >= dt) return;
+    if (up && p == 0) {                        /* the ".." parent-dir entry (#142) */
+        gb_icon(ICON_UP, CT_X, y + 1);         /* 16px icon - fits the row at full height */
+        gb_text(CT_X + 9, y + 6, "..");
+    } else {
+        raw = order[(unsigned char)(p - up)];
+        draw_entry_type(raw, CT_X, y + 1, 1); /* half-height type icon (#103/#426) */
+        gb_text(CT_X + 9, y + 6, name83(NAME_AT(raw)));   /* NAME.EXT */
+    }
+    if (nsel == (unsigned char)(p + 1))        /* red frame on the selected row */
+        gb_frame(CT_X, y, CT_W, 17, 3);
+}
+
 static void draw_list_view(void)
 {
-    unsigned char i, y, p, raw, up = up_avail();
-    unsigned char dt = disp_total();
-#ifdef GB_PREEMPTIVE
-    icon_scan_pos = 0;
-    icon_scan_col = 0;
-    icon_req_x = CT_X;
-    icon_req_y = CT_Y + 1;
-#endif
-    for (i = 0; i < LVIS; i++) {                   /* draw from the sorted cache (#118) */
-        p = (unsigned char)(top + i);
-        y = CT_Y + i * ROW_H;
-        gb_fill(CT_X, y, CT_W, ROW_H, 0);          /* clear stale rows/icons after scroll/repaint */
-        if (p >= dt) continue;
-        if (up && p == 0) {                        /* the ".." parent-dir entry (#142) */
-            gb_icon(ICON_UP, CT_X, y + 1);         /* 16px icon - fits the row at full height */
-            gb_text(CT_X + 9, y + 6, "..");
-        } else {
-            raw = order[(unsigned char)(p - up)];
-            draw_entry_type(raw, CT_X, y + 1, 1); /* half-height type icon (#103/#426) */
-            gb_text(CT_X + 9, y + 6, name83(NAME_AT(raw)));   /* NAME.EXT */
+    unsigned char i;
+    for (i = 0; i < LVIS; i++) draw_list_row(i);   /* draw from the sorted cache (#118) */
+}
+
+static void draw_icons_row(unsigned char r)
+{
+    unsigned char c, cx, cy, raw, cell_w = CELL_W, up = up_avail();
+    unsigned int idx = (unsigned int)(top + r) * ICOLS;
+    unsigned int dt = disp_total();
+    cy = (unsigned char)(CT_Y + r * CELL_H);
+    cx = CT_X;
+    for (c = 0; c < ICOLS; c++) {
+        gb_fill(cx, cy, cell_w, CELL_H - 1, 0);             /* clear whole cell before repaint */
+        if (idx < dt) {
+            if (up && idx == 0) {                            /* the ".." entry (#142) */
+                gb_icon(ICON_UP, (unsigned char)(cx + (cell_w - 4) / 2),  /* 16px, centered */
+                        (unsigned char)(cy + 9));                    /* in the 32px band */
+                gb_text((unsigned char)(cx + (cell_w - 3) / 2), cy + 34, "..");  /* centered */
+            } else {
+                raw = order[(unsigned char)(idx - up)];
+                draw_entry_type(raw, cx + (cell_w - 8) / 2, cy + 1, 0); /* full icon (#103/#426) */
+                draw_name(cx, cy + 34, name83(NAME_AT(raw)));         /* name below the icon */
+            }
+            if (nsel == (unsigned char)(idx + 1))
+                gb_frame(cx, cy, cell_w, CELL_H - 1, 3);
         }
-        if (nsel == (unsigned char)(p + 1))        /* red frame on the selected row */
-            gb_frame(CT_X, y, CT_W, 17, 3);
+        idx++;
+        cx = (unsigned char)(cx + cell_w);
     }
 }
 
 static void draw_icons_view(void)
 {
-    unsigned char r, c, cx, cy, raw, cell_w = CELL_W, up = up_avail();
-    unsigned int idx = (unsigned int)top * ICOLS;    /* first visible item */
-    unsigned int dt = disp_total();
-    cy = CT_Y;
+    unsigned char r;
+    for (r = 0; r < IVIS; r++) draw_icons_row(r);
+}
+
 #ifdef GB_PREEMPTIVE
+static void icon_scan_reset(void)
+{
     icon_scan_pos = 0;
     icon_scan_col = 0;
-    icon_req_x = (unsigned char)(CT_X + (cell_w - 8) / 2);
+    icon_req_x = (view == V_ICONS)
+        ? (unsigned char)(CT_X + (CELL_W - 8) / 2) : CT_X;
     icon_req_y = CT_Y + 1;
+#ifdef GB_PCW
+    icon_probe_wait = APPICON_PROBE_DELAY;
 #endif
-    for (r = 0; r < IVIS; r++) {
-        cx = CT_X;
-        for (c = 0; c < ICOLS; c++) {
-            gb_fill(cx, cy, cell_w, CELL_H - 1, 0);             /* clear whole cell before repaint */
-            if (idx < dt) {
-                if (up && idx == 0) {                            /* the ".." entry (#142) */
-                    gb_icon(ICON_UP, (unsigned char)(cx + (cell_w - 4) / 2),  /* 16px, centered */
-                            (unsigned char)(cy + 9));                    /* in the 32px band */
-                    gb_text((unsigned char)(cx + (cell_w - 3) / 2), cy + 34, "..");  /* centered */
-                } else {
-                    raw = order[(unsigned char)(idx - up)];
-                    draw_entry_type(raw, cx + (cell_w - 8) / 2, cy + 1, 0); /* full icon (#103/#426) */
-                    draw_name(cx, cy + 34, name83(NAME_AT(raw)));         /* name below the icon */
-                }
-                if (nsel == (unsigned char)(idx + 1))
-                    gb_frame(cx, cy, cell_w, CELL_H - 1, 3);
-            }
-            idx++;
-            cx = (unsigned char)(cx + cell_w);
-        }
-        cy = (unsigned char)(cy + CELL_H);
-    }
 }
+#endif
 
 static void sel_frame(unsigned char pos, unsigned char pen)
 {
@@ -878,6 +969,9 @@ static void draw_body(void)
 {
     gb_set_drive(my_drive);              /* this window's drive (#65) - a repaint may run
                                             while another window's drive is active */
+#ifdef GB_PREEMPTIVE
+    icon_scan_reset();
+#endif
     draw_scrollbar();
     if (view == V_ICONS) draw_icons_view();
     else                 draw_list_view();
@@ -890,6 +984,56 @@ static void draw(void)
 {
     gb_curhide();
     draw_body();
+    gb_curshow();
+}
+
+/* scroll_draw: retain the rows which remain visible after a short scroll and
+   draw only the newly exposed rows. Besides reducing screen traffic, this keeps
+   already-rendered APP-owned icons on screen instead of reloading their headers
+   from slow media after every scrollbar click. gb_copybuf is scratch here; no
+   storage job can run while the focused File Manager handles this click. */
+static void scroll_draw(unsigned char old_top)
+{
+    unsigned char delta, row_h, rows, shift, copy_h, y, r;
+
+    rows = vis_lines();
+    row_h = (view == V_ICONS) ? CELL_H : ROW_H;
+    delta = (top > old_top) ? (unsigned char)(top - old_top)
+                            : (unsigned char)(old_top - top);
+    gb_curhide();
+#ifdef GB_PREEMPTIVE
+    icon_scan_reset();
+#endif
+    draw_scrollbar();
+    if (delta >= rows) {
+        if (view == V_ICONS) draw_icons_view();
+        else                 draw_list_view();
+        gb_curshow();
+        return;
+    }
+
+    shift = (unsigned char)(delta * row_h);
+    copy_h = (unsigned char)(rows * row_h - shift);
+    if (top > old_top) {
+        for (y = 0; y < copy_h; y++) {
+            gb_saverect(CT_X, (unsigned char)(CT_Y + shift + y), CT_W, 1, gb_copybuf);
+            gb_restorerect(CT_X, (unsigned char)(CT_Y + y), CT_W, 1, gb_copybuf);
+        }
+        r = (unsigned char)(rows - delta);
+    } else {
+        y = copy_h;
+        while (y) {
+            y--;
+            gb_saverect(CT_X, (unsigned char)(CT_Y + y), CT_W, 1, gb_copybuf);
+            gb_restorerect(CT_X, (unsigned char)(CT_Y + shift + y), CT_W, 1, gb_copybuf);
+        }
+        r = 0;
+        rows = delta;
+    }
+    for (; r < rows; r++) {
+        if (view == V_ICONS) draw_icons_row(r);
+        else                 draw_list_row(r);
+    }
     gb_curshow();
 }
 
@@ -919,6 +1063,9 @@ static unsigned char appicon_step(void)
             gb_curhide();
             icons[raw] = module_draw_icon()
                 ? (unsigned char)(APPICON_EMBEDDED | ICON_APP) : ICON_APP;
+#ifdef GB_PCW
+            icon_probe_wait = APPICON_PROBE_DELAY;
+#endif
             gb_curshow();
         }
     }
@@ -1024,7 +1171,10 @@ static void sb_drag(void)
         if (my < CT_Y) my = CT_Y;
         if (my >= CT_BOT) my = CT_BOT - 1;
         nt = (unsigned char)(((unsigned)(my - CT_Y) * (tl - vl)) / CT_H);
-        if (nt != top) { top = nt; clamp_top(); draw(); }
+        if (nt != top) {
+            unsigned char old = top;
+            top = nt; clamp_top(); scroll_draw(old);
+        }
     }
 }
 
@@ -1256,7 +1406,12 @@ static void fm_frame(void)
     if (copy_state != COPY_IDLE) { copy_step(); return; }
     if (list_state != LIST_IDLE) { list_step(); return; }
     if (gb_drop_claimed()) return;        /* another File Manager owns the storage job */
+#ifdef GB_PCW
+    if (icon_probe_wait) icon_probe_wait--;
+    else if (appicon_step()) return;
+#else
     if (appicon_step()) return;
+#endif
 #endif
     if (dc_timer) dc_timer--;
     if (gb_doc_frame()) { gb_restore_parent(); return; }   /* a View menu ran (#142) */
@@ -1272,6 +1427,9 @@ static void fm_close(void)
         copy_remove_partial();
         copy_created = 0;
         copy_state = COPY_IDLE;
+#ifdef GB_PCW
+        icon_cache_release();
+#endif
         gb_wm_close();
         return;
     }
@@ -1280,7 +1438,12 @@ static void fm_close(void)
         list_state = LIST_IDLE;
     }
 #endif
-    if (gb_doc_close()) gb_wm_close();
+    if (gb_doc_close()) {
+#ifdef GB_PCW
+        icon_cache_release();
+#endif
+        gb_wm_close();
+    }
     else gb_restore_parent();
 }
 
@@ -1342,7 +1505,7 @@ static void fm_click(void)
             sb_drag();
             return;
         }
-        if (top != old) draw();
+        if (top != old) scroll_draw(old);
         return;
     }
 

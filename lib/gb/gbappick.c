@@ -34,6 +34,14 @@
 #if defined(GB_MSX2) && defined(GB_PREEMPTIVE)
 #define MSX_SCRMOD (*(volatile unsigned char *)0xFCAF)
 #endif
+#if defined(GB_PCW) && defined(GB_PREEMPTIVE)
+#define APP_NPAGES ((volatile unsigned char *)0x1437)
+#define APP_PAGES  ((volatile unsigned char *)0x1438)
+#define APP_BUSY   ((volatile unsigned char *)0x1440)
+#define PIC_PAGE_K  (*(volatile unsigned char *)0x130B)
+#define PIC_PAGE2_K (*(volatile unsigned char *)0x1348)
+#define FS_SAVE_LEN_K (*(volatile unsigned int *)0x14FD)
+#endif
 
 #if !defined(GB_MSX2) && !defined(GB_PCW)
 extern unsigned char gb_app_probe(char *dst);
@@ -134,7 +142,12 @@ static unsigned char appicon_native(unsigned char value)
  * The module is paged over the caller, so all request data and icon bytes live
  * in low RAM. */
 unsigned char gb_drawappicon(const char *raw, unsigned char x,
-                             unsigned char y, unsigned char half)
+                             unsigned char y, unsigned char half
+#ifdef GB_PCW
+                             , volatile unsigned char *cache_page,
+                             unsigned char cache_slot
+#endif
+                             )
 {
     unsigned char *data = PROBE_BUF;
     unsigned char *entry;
@@ -212,7 +225,32 @@ unsigned char gb_drawappicon(const char *raw, unsigned char x,
     FS_SAVE_LEN_K = APPICON_LEN;
     if (!gb_pic_edit(GB_PICEDIT_NATIVE)) return 0;
 #elif defined(GB_PCW)
-    for (p = off; p < off + APPICON_LEN; p++) data[p] = appicon_native(data[p]);
+    if (off) {
+        for (p = 0; p < APPICON_LEN; p++) data[p] = data[off + p];
+        off = 0;
+    }
+    if (cache_slot < 64) {
+        if (!*cache_page) {
+            for (p = 0; p < *APP_NPAGES; p++) {
+                if (!APP_BUSY[p]) {
+                    APP_BUSY[p] = 1;
+                    *cache_page = APP_PAGES[p];
+                    break;
+                }
+            }
+        }
+        if (*cache_page) {
+            PIC_PAGE_K = *cache_page;
+            PIC_PAGE2_K = 0;
+            gb_pic_edit_buf = (unsigned int)data;
+            gb_pic_edit_off = (unsigned int)cache_slot << 8;
+            FS_SAVE_LEN_K = APPICON_LEN;
+            (void)gb_pic_edit(GB_PICEDIT_WRITE);
+        }
+    }
+    /* Keep canonical Mode-1 bytes in the cache: gb_pic_blit performs the PCW
+     * conversion. Only the immediate low-RAM draw needs native bytes. */
+    for (p = 0; p < APPICON_LEN; p++) data[p] = appicon_native(data[p]);
 #endif
     if (half) off += APPICON_WB * 8;
     gb_restorerect(x, y, APPICON_WB, rows, data + off);

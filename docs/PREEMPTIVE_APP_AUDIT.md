@@ -65,11 +65,21 @@ Implemented:
   the shared filesystem context;
 - directory scans process at most four entries per frame and insert each entry
   directly into the sorted display order;
+- PCW reads a short file's size from its first extent and scans the complete
+  directory only when a full 16 KiB extent can have continuations;
 - the free-space query runs as a separate frame step after enumeration;
 - opening a drive or directory leaves the existing screen intact during the
   scan and publishes the completed title and listing in one window repaint;
 - embedded `.APP` icons are probed and drawn one visible slot per frame through
   `GBAPICK.MOD`; repaint callbacks perform no storage I/O;
+- PCW waits two quiet seconds before and between embedded-icon probes so real
+  floppy input is not starved by continuous header reads;
+- after the first successful PCW probe, File Manager retains the native icon in
+  a lazily borrowed 16 KiB page. All 64 entries possible on a standard 180K
+  disk fit in that cache, which is released on relist or window close;
+- short scrollbar moves shift retained screen rows and paint only newly exposed
+  entries; repainting a cached APP icon is a RAM blit rather than another file
+  read;
 - cooperative builds retain the original synchronous copy path.
 
 Remaining risks:

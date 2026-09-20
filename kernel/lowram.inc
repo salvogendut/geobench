@@ -178,6 +178,7 @@ UI_LINE         equ   #1702        ; arg: line
 UI_N            equ   #1703        ; arg: popup label count / prompt maxlen
 UI_RES          equ   #1704        ; result byte (popup row/0xFF, prompt 1/0, pick 1/0)
 UI_MODAL        equ   #1705        ; 1 while the UI module runs -> menu_dispatch skips the app
+; #1706..#1707 are transient GBAPICK PCW icon-cache page/slot arguments.
 UI_TEXT         equ   #1708        ; packed text: popup labels / prompt caption+buffer / exts
 WM_FR_X         equ   1            ; entry field offsets (after +0 page):
 WM_FR_FRAME     equ   5

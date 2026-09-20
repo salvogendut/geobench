@@ -45,7 +45,7 @@ esac
 # shellcheck disable=SC2086
 "$SDCC" -mz80 --opt-code-size --fomit-frame-pointer -I "$GB" \
     $APPDEFS -c "$GB/gbappick.c" -o "$work/gbappick.rel"
-"$SDCC" -mz80 --no-std-crt0 --code-loc 0x6000 --data-loc 0x7440 \
+"$SDCC" -mz80 --no-std-crt0 --code-loc 0x6000 --data-loc 0x7600 \
     "$work/crt0.rel" "$work/gbappick_mod.rel" "$work/gbdlg.rel" \
     "$work/gbappick.rel" $PROBE_REL "$work/gblib.rel" -o "$work/mod.ihx"
 
@@ -65,7 +65,7 @@ for line in open(sys.argv[1]):
 load = ("_CODE", "_GSINIT", "_GSFINAL", "_INITIALIZER")
 image_end = max(area[name][0] + area[name][1] for name in load if name in area)
 top = max(start + size for start, size in area.values())
-if image_end > 0x7440 or top > 0x8000:
+if image_end > 0x7600 or top > 0x8000:
     raise SystemExit(
         "FIT ERROR (GBAPICK): image=0x%04X top=0x%04X" % (image_end, top)
     )
