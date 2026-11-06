@@ -16,6 +16,14 @@ static const unsigned char mj_face_count[MJ_TILESET_COUNT] = {
 static const unsigned int mj_art_offset[MJ_TILESET_COUNT] = {
     0, 3024,
 };
+static const char mj_pronunciation[MJ_FACE_COUNT_MAX][4] = {
+    "A", "I", "U", "E", "O", "KA", "KI", "KU",
+    "KE", "KO", "SA", "SHI", "SU", "SE", "SO", "TA",
+    "CHI", "TSU", "TE", "TO", "NA", "NI", "NU", "NE",
+    "NO", "HA", "HI", "FU", "HE", "HO", "MA", "MI",
+    "MU", "ME", "MO", "YA", "YU", "YO", "RA", "RI",
+    "RU", "WA",
+};
 
 static const unsigned char mj_row[MJ_TILE_COUNT] = {
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 2, 2,

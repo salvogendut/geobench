@@ -16,6 +16,7 @@ APP_PAGES       = 0x1438
 APP_BUSY        = 0x1440
 FS_XFLAGS       = 0x144F
 GB_FSLOAD       = 0x803F
+GB_GETDRIVE     = 0x8084
 BANK_PORT       = 0x7F00
 APP_BASE        = 0x4000
 APP_LOAD_MAX    = 0x3F00
@@ -27,6 +28,31 @@ PROBE_LEN       = 0x0400
 ;; The focused window name must already identify the candidate APP.
 _gb_app_probe:
         ld      (PIC_EDIT_BUF), hl
+        call    GB_GETDRIVE
+        or      a
+        jr      nz, probe_whole
+
+        ;; Drive C may use M4, whose resident backend recognizes bit 7 as a
+        ;; bounded prefix request. Albireo/IDE safely reject the 1 KiB cap and
+        ;; fall through to the existing whole-file probe below. Floppy drives
+        ;; skip this path because their chunk loader would page over GBAPICK.
+        ld      a, #0x80
+        ld      (FS_XFLAGS), a
+        ld      hl, (PIC_EDIT_BUF)
+        ld      de, #PROBE_LEN
+        call    GB_FSLOAD
+        push    af
+        xor     a
+        ld      (FS_XFLAGS), a
+        pop     af
+        jr      nc, probe_whole
+        ld      a, b
+        cp      #4
+        jr      c, probe_whole
+        ld      a, #1
+        ret
+
+probe_whole:
         ld      hl, #probe_low_start
         ld      de, #PROBE_EXEC
         ld      bc, #probe_low_end-probe_low_start

@@ -19,6 +19,19 @@ from PIL import Image
 
 
 ATLAS_SPECS = (("Katakana", 6, 7, 12), ("Hiragana", 6, 6, 6))
+# Both source atlases use this row-major gojuon subset. Keep pronunciation
+# metadata beside the atlas description so generated artwork and labels cannot
+# silently drift apart. Labels are ASCII and limited to three characters for
+# the compact in-app preview panel.
+ROMAJI = (
+    "A", "I", "U", "E", "O", "KA",
+    "KI", "KU", "KE", "KO", "SA", "SHI",
+    "SU", "SE", "SO", "TA", "CHI", "TSU",
+    "TE", "TO", "NA", "NI", "NU", "NE",
+    "NO", "HA", "HI", "FU", "HE", "HO",
+    "MA", "MI", "MU", "ME", "MO", "YA",
+    "YU", "YO", "RA", "RI", "RU", "WA",
+)
 TILE_W = 16
 TILE_H = 18
 TILE_BYTES = TILE_W // 4 * TILE_H
@@ -195,6 +208,15 @@ def comma_lines(values, width=16):
     return "\n".join(lines)
 
 
+def string_lines(values, width=8):
+    lines = []
+    for start in range(0, len(values), width):
+        lines.append(
+            "    " + ", ".join(f'"{value}"' for value in values[start : start + width]) + ","
+        )
+    return "\n".join(lines)
+
+
 def atlas_art(source, atlas_name, cols, rows, margin):
     image = Image.open(source).convert("L")
     if image.width % cols or image.height % rows:
@@ -223,6 +245,14 @@ def generate(sources):
         face_counts.append(cols * rows)
         art.extend(atlas_art(source, atlas_name, cols, rows, margin))
 
+    if max(face_counts) != len(ROMAJI):
+        raise ValueError(
+            f"pronunciation table has {len(ROMAJI)} labels, "
+            f"but the largest atlas has {max(face_counts)} faces"
+        )
+    if any(len(label) > 3 for label in ROMAJI):
+        raise ValueError("pronunciation labels must fit in three characters")
+
     layout = turtle_layout()
     order = solvable_order(layout)
     rows = [p[0] for p in layout]
@@ -245,6 +275,9 @@ static const unsigned char mj_face_count[MJ_TILESET_COUNT] = {{
 }};
 static const unsigned int mj_art_offset[MJ_TILESET_COUNT] = {{
 {comma_lines(art_offsets)}
+}};
+static const char mj_pronunciation[MJ_FACE_COUNT_MAX][4] = {{
+{string_lines(ROMAJI)}
 }};
 
 static const unsigned char mj_row[MJ_TILE_COUNT] = {{

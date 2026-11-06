@@ -26,6 +26,10 @@
 #define STATUS_Y      27
 #define BOARD_AREA_Y  38
 #define BOARD_Y       (BOARD_AREA_Y + (GB_LINES - BOARD_AREA_Y - 2 - BOARD_H) / 2)
+#define PREVIEW_X     (GB_COLS - 17)
+#define PREVIEW_Y     112
+#define PREVIEW_W     16
+#define PREVIEW_TEXT_Y 188
 
 #define TILE_NORMAL    0
 #define TILE_SELECTED  1
@@ -174,6 +178,53 @@ static void draw_tile(unsigned char i)
 #endif
 }
 
+static unsigned char source_pen(const unsigned char *src,
+                                unsigned char x, unsigned char y)
+{
+    unsigned char value = src[(unsigned int)y * MJ_TILE_WB + (x >> 2)];
+    unsigned char pixel = (unsigned char)(x & 3);
+    return (unsigned char)(((value >> (7 - pixel)) & 1) |
+           (((value >> (3 - pixel)) & 1) << 1));
+}
+
+static void draw_preview(void)
+{
+    const unsigned char *src;
+    const char *label;
+    unsigned int offset;
+    unsigned char i, x, y, start, pen, next, len;
+
+    gb_fill(PREVIEW_X, (unsigned char)(PREVIEW_Y - 4),
+            (unsigned char)(GB_COLS - PREVIEW_X),
+            (unsigned char)(GB_LINES - PREVIEW_Y + 4), 0);
+    i = selected != NO_TILE ? selected : match_second;
+    if (i == NO_TILE) return;
+
+    offset = mj_art_offset[tileset] + (unsigned int)face[i] * MJ_TILE_BYTES;
+    src = mj_tile_art + offset;
+    for (y = 0; y < MJ_TILE_H; y++) {
+        x = 0;
+        while (x < 16) {
+            start = x;
+            pen = source_pen(src, x, y);
+            do {
+                x++;
+                if (x == 16) break;
+                next = source_pen(src, x, y);
+            } while (next == pen);
+            gb_fill((unsigned char)(PREVIEW_X + start),
+                    (unsigned char)(PREVIEW_Y + y * 4),
+                    (unsigned char)(x - start), 4, pen);
+        }
+    }
+
+    label = mj_pronunciation[face[i]];
+    len = 0;
+    while (label[len]) len++;
+    gb_text((unsigned char)(PREVIEW_X + (PREVIEW_W - len) / 2),
+            PREVIEW_TEXT_Y, label);
+}
+
 static void format_count(void)
 {
     unsigned char n = remaining;
@@ -265,6 +316,7 @@ static void draw_all(void)
     gb_fill(0, CONTENT_Y, GB_COLS, (unsigned char)(GB_LINES - CONTENT_Y), 0);
     draw_status();
     draw_board();
+    draw_preview();
     gb_curshow();
 }
 
@@ -273,6 +325,7 @@ static void redraw_game(void)
     gb_curhide();
     draw_status();
     draw_board();
+    draw_preview();
     gb_curshow();
 }
 
@@ -339,6 +392,7 @@ static void show_hint(void)
     gb_curhide();
     if (old != NO_TILE) draw_tile(old);
     if (hint_a != NO_TILE) { draw_tile(hint_a); draw_tile(hint_b); }
+    draw_preview();
     draw_status();
     gb_curshow();
 }
@@ -383,6 +437,7 @@ static void finish_match(void)
     }
     gb_curhide();
     draw_status();
+    draw_preview();
     redraw_removed_pair(a, b);
     gb_curshow();
 }
@@ -412,8 +467,10 @@ static void click_board(void)
         match_wait = MATCH_HOLD;
         draw_tile(i);
         status_text = "Pair matched";
+        draw_preview();
         draw_status(); gb_curshow(); return;
     }
+    draw_preview();
     draw_status();
     gb_curshow();
 }
@@ -479,7 +536,7 @@ void main(void)
     unsigned char n;
     gb_time();
     rng = (unsigned int)((gb_sec << 8) ^ (gb_min << 3) ^ gb_hour ^ 0x4D4Au);
-    board_x = (unsigned char)((GB_COLS - BOARD_W) / 2);
+    board_x = (unsigned char)((PREVIEW_X - BOARD_W) / 2);
     board_y = BOARD_Y;
     tileset = 0;
     status_text = "Starting game";

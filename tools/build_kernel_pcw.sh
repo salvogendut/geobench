@@ -117,7 +117,7 @@ APP_ICON=apps/browser/icon.asm GBWIN=0 GBLIB_SRC=lib/gb/gblib_browser.s APP_CFLA
 APPDEFS="-DGB_PCW" DATA_LOC=0x6200 tools/build_capp.sh apps/brsave build/pcw/BRSAVE.RAW
 APPDEFS="-DGB_PCW" DATA_LOC=0x7400 tools/build_capp.sh apps/timesync build/pcw/TIMESYNC.RAW
 APP_ICON=apps/shell/icon.asm APPDEFS="-DGB_PCW" DATA_LOC=0x6D00 SCROLL=1 tools/build_capp.sh apps/shell build/pcw/SHELL.RAW
-APP_ICON=apps/mahjong/icon.asm APPDEFS="-DGB_PCW" DATA_LOC=0x7100 DIALOGS=1 tools/build_capp.sh apps/mahjong build/pcw/MAHJONG.RAW
+APP_ICON=apps/mahjong/icon.asm APPDEFS="-DGB_PCW" DATA_LOC=0x72C0 DIALOGS=1 tools/build_capp.sh apps/mahjong build/pcw/MAHJONG.RAW
 APPDEFS="-DGB_PCW" DATA_LOC=0x6800 BUTTON=1 tools/build_capp.sh apps/calculator build/pcw/CALC.RAW
 # savers: the PORTABLE (pure gb_* API) subset - the direct-#C000 ones need a
 # PCW plot path first (follow-up)
