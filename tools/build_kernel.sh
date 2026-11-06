@@ -163,7 +163,7 @@ DATA_LOC=0x7A50 DIALOGS=1 WIDGETS=1 NET=1 tools/build_capp.sh apps/wget build/WG
 APP_ICON=apps/browser/icon.asm GBWIN=0 GBLIB_SRC=lib/gb/gblib_browser.s APP_CFLAGS="--max-allocs-per-node 100000" DATA_LOC=0x7E00 NET=1 tools/build_capp.sh apps/browser build/BROWSER.RAW # BROWSER (#367/#371/#373/#476): demand stream + offline/proxy/GET-form/table support
 DATA_LOC=0x6200 tools/build_capp.sh apps/brsave build/BRSAVE.RAW # transient Browser .HTM source writer
 APP_ICON=apps/shell/icon.asm DATA_LOC=0x6D00 SCROLL=1 tools/build_capp.sh apps/shell build/SHELL.RAW # SHELL (#365): portable command shell with streamed cat/cp
-APP_ICON=apps/mahjong/icon.asm DATA_LOC=0x72C0 DIALOGS=1 tools/build_capp.sh apps/mahjong build/MAHJONG.RAW # Kana Mahjong: solvable 144-tile Turtle game
+APP_ICON=apps/mahjong/icon.asm DATA_LOC=0x7900 DIALOGS=1 tools/build_capp.sh apps/mahjong build/MAHJONG.RAW # Kana Mahjong: solvable 144-tile Turtle game
 DATA_LOC=0x6800 BUTTON=1 tools/build_capp.sh apps/calculator build/CALC.RAW # CALC (#437): compact fixed-point desktop calculator
 if [ "$PREEMPTIVE" = "1" ]; then
     TASK_ROOT=1 TASK_RUNTIME_RAW=build/GBSCHED.RAW \
