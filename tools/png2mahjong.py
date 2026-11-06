@@ -2,10 +2,11 @@
 """Generate the compact Kana Mahjong artwork and board tables.
 
 The sources are a 6x7 Katakana atlas and a 6x6 Hiragana atlas. This tool
-extracts each glyph, reduces it to a monochrome mask, and renders a canonical
-GEOBENCH Mode-1 tile (16x18 pixels, four pixels per byte). It also emits the
-traditional 144-position Turtle layout and a legal removal order used to make
-every shuffled game solvable.
+extracts each glyph, supplements the characters absent from those original
+atlases with deterministic 12x13 masks, and renders the complete 46-character
+basic gojuon as canonical GEOBENCH Mode-1 tiles (16x18 pixels, four pixels per
+byte). It also emits the traditional 144-position Turtle layout and a legal
+removal order used to make every shuffled game solvable.
 
 Usage:
     tools/png2mahjong.py [--check] assets/katakana.png assets/hiragana.png \
@@ -18,11 +19,8 @@ from pathlib import Path
 from PIL import Image
 
 
-ATLAS_SPECS = (("Katakana", 6, 7, 12), ("Hiragana", 6, 6, 6))
-# Both source atlases use this row-major gojuon subset. Keep pronunciation
-# metadata beside the atlas description so generated artwork and labels cannot
-# silently drift apart. Labels are ASCII and limited to three characters for
-# the compact in-app preview panel.
+# Labels are ASCII and limited to three characters for the compact in-app
+# preview panel. Both tile sets use this complete basic gojuon order.
 ROMAJI = (
     "A", "I", "U", "E", "O", "KA",
     "KI", "KU", "KE", "KO", "SA", "SHI",
@@ -30,8 +28,240 @@ ROMAJI = (
     "TE", "TO", "NA", "NI", "NU", "NE",
     "NO", "HA", "HI", "FU", "HE", "HO",
     "MA", "MI", "MU", "ME", "MO", "YA",
-    "YU", "YO", "RA", "RI", "RU", "WA",
+    "YU", "YO", "RA", "RI", "RU", "RE",
+    "RO", "WA", "WO", "N",
 )
+
+# The original source atlases end early. Katakana has WA after RU; Hiragana
+# ends at YA. Preserve their source order and add only the absent faces below.
+ATLAS_SPECS = (
+    ("Katakana", 6, 7, 12, ROMAJI[:41] + ("WA",)),
+    ("Hiragana", 6, 6, 6, ROMAJI[:36]),
+)
+
+
+def pattern(rows):
+    return tuple(rows.split())
+
+
+# Canonical masks for the characters missing from the source PNGs. Keeping
+# these as text makes the full set reproducible without requiring a host font.
+EXTRA_GLYPHS = {
+    "Katakana": {
+        "RE": pattern("""
+            ##..........
+            ##..........
+            ##..........
+            ##..........
+            ##..........
+            ##..........
+            ##........##
+            ##.......##.
+            ##.....###..
+            ##....###...
+            ##.#####....
+            ######......
+            ###.........
+        """),
+        "RO": pattern("""
+            ############
+            ############
+            ##........##
+            ##........##
+            ##........##
+            ##........##
+            ##........##
+            ##........##
+            ##........##
+            ############
+            ############
+            ##........##
+            ............
+        """),
+        "WO": pattern("""
+            ############
+            ############
+            ..........##
+            ..........##
+            ###########.
+            ###########.
+            .........##.
+            ........##..
+            .......###..
+            ......###...
+            .....###....
+            ..####......
+            ..###.......
+        """),
+        "N": pattern("""
+            .#..........
+            .###........
+            ..###.......
+            ...##.....##
+            ..........##
+            .........##.
+            ........##..
+            .......###..
+            ......###...
+            ....###.....
+            ######......
+            ####........
+            ............
+        """),
+    },
+    "Hiragana": {
+        "YU": pattern("""
+            ......#.....
+            ##....##....
+            ##..######..
+            ##.#####.##.
+            #.##..##..##
+            ###...##...#
+            ##....##...#
+            ##.#..##..##
+            ##.##.##.###
+            ##..#######.
+            .....####...
+            ....##......
+            ....#.......
+        """),
+        "YO": pattern("""
+            .....#......
+            .....#......
+            .....#......
+            .....######.
+            .....##.....
+            .....#......
+            .....##.....
+            .....#......
+            .#######....
+            ##...####...
+            #....##.###.
+            ###.##...##.
+            .#####......
+        """),
+        "RA": pattern("""
+            ..####......
+            ...######...
+            .......#....
+            ##..........
+            ##..........
+            ##..#####...
+            ##########..
+            ###......##.
+            ##.......##.
+            .........##.
+            .........##.
+            ..#..#####..
+            ..#######...
+        """),
+        "RI": pattern("""
+            .##.........
+            .##.#####...
+            .####..##...
+            .###....##..
+            .##.....##..
+            .##......#..
+            .##......#..
+            .##.....##..
+            .#......##..
+            ........##..
+            ......###...
+            ....####....
+            ...###......
+        """),
+        "RU": pattern("""
+            ..########..
+            ..########..
+            ......###...
+            .....##.....
+            ....##......
+            ...#######..
+            ..##.....##.
+            ###.......##
+            ##..###...##
+            ...#####..##
+            ...#...##.##
+            ...###.####.
+            ....######..
+        """),
+        "RE": pattern("""
+            ............
+            ...#........
+            ...#........
+            ####..###...
+            ######..##..
+            ...##...##..
+            ..##....##..
+            .###....##..
+            ####....##..
+            #..#....#..#
+            ..##....####
+            ..##.....##.
+            ............
+        """),
+        "RO": pattern("""
+            ..########..
+            ..########..
+            ......###...
+            .....##.....
+            ....###.....
+            ...########.
+            ..###....###
+            ###.......##
+            ##........##
+            ..........##
+            .........###
+            ....#######.
+            ...######...
+        """),
+        "WA": pattern("""
+            ............
+            ...##.......
+            ...##.......
+            #####..###..
+            ###########.
+            ...###....##
+            ..##.......#
+            .###.......#
+            .###......##
+            ##.#.....##.
+            ...#...###..
+            ...#...#....
+            ............
+        """),
+        "WO": pattern("""
+            ....##......
+            ....##.###..
+            ##########..
+            ...##.......
+            ..##.......#
+            ..#####..###
+            .##...####..
+            ##...###....
+            ....####....
+            ...##.##....
+            ...#........
+            ...##....##.
+            ....#######.
+        """),
+        "N": pattern("""
+            ............
+            .....#......
+            ....##......
+            ....#.......
+            ...##.......
+            ...#........
+            ..#####.....
+            ..##..#.....
+            .##...#....#
+            .#....#...##
+            ##....##.##.
+            ##....####..
+            ............
+        """),
+    },
+}
 TILE_W = 16
 TILE_H = 18
 TILE_BYTES = TILE_W // 4 * TILE_H
@@ -217,7 +447,22 @@ def string_lines(values, width=8):
     return "\n".join(lines)
 
 
-def atlas_art(source, atlas_name, cols, rows, margin):
+def pattern_mask(rows, atlas_name, label):
+    if len(rows) != GLYPH_H or any(len(row) != GLYPH_W for row in rows):
+        raise ValueError(f"invalid {atlas_name} {label} mask")
+    mask = [[False] * TILE_W for _ in range(TILE_H)]
+    x0 = (15 - GLYPH_W) // 2
+    y0 = (17 - GLYPH_H) // 2
+    for y, row in enumerate(rows):
+        for x, pixel in enumerate(row):
+            if pixel == "#":
+                mask[y0 + y][x0 + x] = True
+            elif pixel != ".":
+                raise ValueError(f"invalid pixel in {atlas_name} {label} mask")
+    return mask
+
+
+def atlas_masks(source, atlas_name, cols, rows, margin, source_labels):
     image = Image.open(source).convert("L")
     if image.width % cols or image.height % rows:
         raise ValueError(
@@ -226,24 +471,43 @@ def atlas_art(source, atlas_name, cols, rows, margin):
         )
     cell_w = image.width // cols
     cell_h = image.height // rows
-    art = []
+    if len(source_labels) != cols * rows:
+        raise ValueError(f"{atlas_name} source-label count does not match its grid")
+    masks = {}
     for row in range(rows):
         for col in range(cols):
+            index = row * cols + col
             cell = image.crop(
                 (col * cell_w, row * cell_h, (col + 1) * cell_w, (row + 1) * cell_h)
             )
-            art.extend(tile_art(glyph_mask(cell, atlas_name, margin)))
-    return art
+            masks[source_labels[index]] = glyph_mask(cell, atlas_name, margin)
+    for label, rows in EXTRA_GLYPHS[atlas_name].items():
+        if label in masks:
+            raise ValueError(f"duplicate {atlas_name} face {label}")
+        masks[label] = pattern_mask(rows, atlas_name, label)
+    return masks
 
 
 def generate(sources):
     art = []
     face_counts = []
     art_offsets = []
-    for source, (atlas_name, cols, rows, margin) in zip(sources, ATLAS_SPECS):
+    for source, (atlas_name, cols, rows, margin, source_labels) in zip(
+        sources, ATLAS_SPECS
+    ):
+        masks = atlas_masks(
+            source, atlas_name, cols, rows, margin, source_labels
+        )
+        missing = [label for label in ROMAJI if label not in masks]
+        extra = [label for label in masks if label not in ROMAJI]
+        if missing or extra:
+            raise ValueError(
+                f"{atlas_name} face mismatch: missing={missing}, extra={extra}"
+            )
         art_offsets.append(len(art))
-        face_counts.append(cols * rows)
-        art.extend(atlas_art(source, atlas_name, cols, rows, margin))
+        face_counts.append(len(ROMAJI))
+        for label in ROMAJI:
+            art.extend(tile_art(masks[label]))
 
     if max(face_counts) != len(ROMAJI):
         raise ValueError(
@@ -315,7 +579,7 @@ def main():
             raise SystemExit(f"{args.output} is stale; run tools/png2mahjong.py")
         print(
             f"{args.output}: current "
-            "(42 Katakana, 36 Hiragana, 144-position solvable Turtle layout)"
+            "(46 Katakana, 46 Hiragana, 144-position solvable Turtle layout)"
         )
         return
     if current != generated:
@@ -323,7 +587,7 @@ def main():
         args.output.write_text(generated)
         print(
             f"generated {args.output} "
-            "(42 Katakana, 36 Hiragana, "
+            "(46 Katakana, 46 Hiragana, "
             f"{len(turtle_layout())} tiles)"
         )
     else:
