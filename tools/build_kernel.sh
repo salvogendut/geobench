@@ -140,6 +140,10 @@ python3 tools/packicons.py build/PAINT.IST \
     "$PAINT_ASSET_DIR/copy.asm" "$PAINT_ASSET_DIR/paste.asm" \
     "$PAINT_ASSET_DIR/undo.asm"
 "$RASM" kernel/modules/picedit_low.asm >/dev/null
+# gbkern.asm inserts DEFAULT.SPR into the disk with EDSK. RASM resolves that
+# host file before the later SAVE directives in gbkern.asm execute, so a clean
+# checkout must create the composite cursor/helper assets in a separate pass.
+"$RASM" kernel/pack_cursors.asm -eo >/dev/null
 # Backdrop tiles (#128): stage every assets/backdrops tile as build/<NAME>.BDP - copy any
 # ready-made *.BDP, and convert any *.png that has no matching .BDP. Uppercased 8.3 names.
 for bdp in assets/backdrops/*.BDP; do
