@@ -9,7 +9,8 @@ case "$APP" in
         APP=mahjong
         BASE=MAHJONG
         APP_ICON="apps/mahjong/icon.asm"
-        DATA_LOC=0x7100
+        APP_CFLAGS=
+        DATA_LOC=0x72C0
         DIALOGS=1
         BUTTON=0
         ;;
@@ -17,6 +18,7 @@ case "$APP" in
         APP=calculator
         BASE=CALC
         APP_ICON=
+        APP_CFLAGS=
         DATA_LOC=0x6800
         DIALOGS=0
         BUTTON=1
@@ -27,11 +29,11 @@ case "$APP" in
         ;;
 esac
 
-APP_ICON="$APP_ICON" DATA_LOC="$DATA_LOC" DIALOGS="$DIALOGS" BUTTON="$BUTTON" \
+APP_ICON="$APP_ICON" APP_CFLAGS="$APP_CFLAGS" DATA_LOC="$DATA_LOC" DIALOGS="$DIALOGS" BUTTON="$BUTTON" \
     tools/build_capp.sh "apps/$APP" "build/$BASE.RAW"
-APP_ICON="$APP_ICON" APPDEFS="-DGB_MSX2" DATA_LOC="$DATA_LOC" DIALOGS="$DIALOGS" BUTTON="$BUTTON" \
+APP_ICON="$APP_ICON" APPDEFS="-DGB_MSX2" APP_CFLAGS="$APP_CFLAGS" DATA_LOC="$DATA_LOC" DIALOGS="$DIALOGS" BUTTON="$BUTTON" \
     tools/build_capp.sh "apps/$APP" "build/msx/$BASE.RAW"
-APP_ICON="$APP_ICON" APPDEFS="-DGB_PCW" DATA_LOC="$DATA_LOC" DIALOGS="$DIALOGS" BUTTON="$BUTTON" \
+APP_ICON="$APP_ICON" APPDEFS="-DGB_PCW" APP_CFLAGS="$APP_CFLAGS" DATA_LOC="$DATA_LOC" DIALOGS="$DIALOGS" BUTTON="$BUTTON" \
     tools/build_capp.sh "apps/$APP" "build/pcw/$BASE.RAW"
 
 for dir in QA/CPC/CARD/GBENCH QA/MSX/CARD/GBENCH QA/CPC/Floppies QA/PCW/Floppies; do

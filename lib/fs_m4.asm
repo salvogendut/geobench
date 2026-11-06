@@ -260,8 +260,6 @@ m4_cd_root
 ; fsm4_present (D0_PRESENT): list the current dir (root at boot) - if it yields an
 ; entry the M4 SD is present + readable. CF set = present.
 fsm4_present
-                jp    fsm4_dir_first
-
 ; fsm4_dir_first: cd to m4_path, open the dir iterator, return the first entry. Sent the
 ; M4ROM way (m4_send + size byte) with an EMPTY filter - M4ROM's |dir/cat sends just a NUL,
 ; and sending "*" instead breaks SUBDIR enumeration on real M4 hardware (the emulator
@@ -291,8 +289,7 @@ fsm4_dir_next
                 ret
 mdn_end
                 call  m4_io_end
-                or    a                       ; NC = end of directory
-                ret
+                ret                           ; matching CP left carry clear
 
 ; m4_decode_entry: parse the C_READDIR entry (slot 6 still paged) into fs_ent_*.
 ;   #E800+3..+10 = 8-char name (space-padded); '>' at +3 marks a directory (its name
@@ -389,9 +386,7 @@ mlf_done
                 scf
                 ret
 mlf_nf_io
-                call  m4_io_end
-                or    a
-                ret
+                jp    m4_io_end               ; open-error OR left carry clear
 mlf_toobig
                 call  m4_close_fd
                 or    a
@@ -409,10 +404,14 @@ m4_read_chunk
                 out   (c),a
                 ld    a,(m4_fd)
                 out   (c),a
-                ld    a,#00
-                out   (c),a                  ; count lo (#0800 = M4_READCHUNK)
-                ld    a,#08
-                out   (c),a                  ; count hi
+                xor   a
+                out   (c),a                  ; count lo (both requests are aligned)
+                ld    a,(FS_XFLAGS)
+                rlca                         ; bit 7 selects GBAPICK's 1 KiB prefix
+                ld    a,#04
+                jr    c,mrc_count_ready
+                add   a,a                    ; ordinary chunk: #0800
+mrc_count_ready out   (c),a                  ; count hi (#04 probe, #08 ordinary)
                 call  m4_go
                 ld    hl,(M4_RESP+4)        ; actual bytes read this chunk
                 ld    (m4_actual),hl
