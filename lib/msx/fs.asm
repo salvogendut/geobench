@@ -300,17 +300,7 @@ fsmx_probe_append
 ; units raise a DOS disk error instead of returning it normally, so install a
 ; short-lived handler which aborts that one BDOS call back to this probe.
 fsmx_drive_accessible
-                ld    de,fsmx_abort_exit
-                ld    c,_DEFAB
-                push  ix
-                call  BDOS
-                pop   ix
-                ld    de,fsmx_disk_error
-                ld    c,_DEFER
-                push  ix
-                call  BDOS
-                pop   ix
-
+                call  fsmx_trap_errors
                 ld    a,(fsmx_probe_drive)
                 inc   a                       ; _DSPACE: 1=A:, 2=B:, ...
                 ld    e,a
@@ -320,20 +310,31 @@ fsmx_drive_accessible
                 call  BDOS
                 pop   ix
                 ld    (fsmx_probe_error),a
-
-                ld    de,0                    ; restore the process defaults
-                ld    c,_DEFER
-                push  ix
-                call  BDOS
-                pop   ix
-                ld    de,0
-                ld    c,_DEFAB
-                push  ix
-                call  BDOS
-                pop   ix
+                call  fsmx_untrap_errors
                 call  fsmx_restore_page
                 ld    a,(fsmx_probe_error)
                 or    a
+                ret
+; The graphical desktop cannot answer DOS's console Abort/Retry/Ignore prompt.
+; Scope handlers to the operation; normal DOS behaviour resumes on return.
+fsmx_trap_errors
+                push  ix
+                ld    de,fsmx_abort_exit
+                ld    c,_DEFAB
+                call  BDOS
+                ld    de,fsmx_disk_error
+                ld    c,_DEFER
+                jr    fsmx_set_handler
+fsmx_untrap_errors
+                push  ix
+                ld    de,0
+                ld    c,_DEFER
+                call  BDOS
+                ld    de,0
+                ld    c,_DEFAB
+fsmx_set_handler
+                call  BDOS
+                pop   ix
                 ret
 fsmx_disk_error
                 ld    a,1                     ; abort this disk operation
@@ -706,6 +707,7 @@ fs_save_file
                 ei
                 push  ix
                 call  fsmx_name_to_path
+                call  fsmx_trap_errors
                 ld    a,(FS_XFLAGS)
                 and   2                       ; append mode? open existing + seek to end
                 jr    nz,fsave_append
@@ -734,6 +736,8 @@ fsave_append
                 ld    hl,0
                 ld    c,_SEEK
                 call  BDOS
+                or    a
+                jr    nz,fsave_closefail
 fsave_do
                 call  fsmx_restore_page      ; ensure _WRITE below reads the mapped app page
                 ld    a,(fsmx_handle)         ; BDOS clobbers B on the seek; reload the handle
@@ -744,26 +748,29 @@ fsave_do
                 call  BDOS
                 or    a
                 jr    nz,fsave_closefail
+                ld    de,(fs_save_len)
+                sbc   hl,de                  ; _WRITE reports the actual count
+                jr    nz,fsave_closefail
                 ld    a,(fsmx_handle)
                 ld    b,a
                 ld    c,_DCLOSE
                 call  BDOS
                 or    a
                 jr    nz,fsave_fail
-                pop   ix
-                call  fsmx_restore_page
                 scf
-                ret
+                jr    fsave_return
 fsave_closefail
                 ld    a,(fsmx_handle)
                 ld    b,a
                 ld    c,_DCLOSE
                 call  BDOS
 fsave_fail
-                pop   ix
-                call  fsmx_restore_page
                 or    a
-                ret
+fsave_return    push  af
+                call  fsmx_untrap_errors
+                pop   af
+                pop   ix
+                jp    fsmx_restore_page
 
 ; fs_delete_file: delete fs_req_name from the current directory. CF = deleted.
 fs_delete_file

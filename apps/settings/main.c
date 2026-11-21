@@ -313,7 +313,15 @@ static void cfg_set(const char *key, const char *val)
     }
     sel_boot_root();
     gb_set_name("GEOBENCHCFG");
-    gb_fs_save(cfgbuf, cfglen);
+    if (!gb_fs_save(cfgbuf, cfglen)) {
+        /* The kernel copy is the last applied config. Don't show or apply
+           the edited value when the boot disk rejected the save. */
+        cfglen = *(volatile unsigned int *)0x1200;
+        if (cfglen > sizeof(cfgbuf)) cfglen = 0;
+        for (i = 0; i < cfglen; i++) cfgbuf[i] = ((const char *)0x1000)[i];
+        gb_alert("Settings not saved", "Check boot disk");
+        return;
+    }
     /* Keep the kernel's in-memory config copy in step with the disk, so changes the
        desktop reads straight from it (the screensaver SAVER=/SAVERTIME=, #219) take
        effect without a reboot - the desktop re-parses it when it repaints. */

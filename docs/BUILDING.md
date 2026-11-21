@@ -213,6 +213,11 @@ it for you) — or write the whole `QA/MSX/GBMSX.IMG` to the device. It needs **
 `GBMSX.COM` reads `MSXMODE=6|7` from `GEOBENCH.CFG` and loads the matching
 mode-specific binary. System Settings updates that key for the next boot.
 
+When testing the SD Mapper card in 1983, SD images are read-only by default.
+To test saves, use a working copy of `QA/MSX/GBMSX.IMG` with
+`--sd-a /path/to/copy.img --sd-mode read-write`. A protected card should
+still let you dismiss a save error and continue using the desktop.
+
 ### Floppy distribution
 
 `tools/build_msx_floppy.sh` assembles two standard **720K FAT12** images under
