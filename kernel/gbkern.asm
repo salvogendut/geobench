@@ -2039,10 +2039,7 @@ wzr_skip        inc   hl
 wm_focus_top
                 ld    a,(WM_NWIN)
                 dec   a
-                ld    hl,WM_Z
-                add   a,l
-                ld    l,a
-                ld    a,(hl)
+                call  wm_z_slot
                 ld    (WM_FOCUS),a
                 ret
 
@@ -2082,44 +2079,31 @@ k_wm_managed
                 ld    a,(WM_FOCUS)           ; the just-registered window
                 call  wm_entry               ; HL = entry
                 push  hl
-                ld    de,WM_FR_FLAGS         ; FLAGS |= managed
-                add   hl,de
-                set   1,(hl)
-                pop   hl
-                push  hl
-                ld    de,WM_FR_FRAME         ; WM_FR_FRAME (entry+5,6) = the descriptor ptr
+                ld    de,WM_FR_FRAME
                 add   hl,de
                 ld    de,(wm_desc)
                 ld    (hl),e
                 inc   hl
                 ld    (hl),d
-                pop   hl
-                ld    de,WM_FR_EVENT         ; WM_FR_EVENT = desc.on_event (so bar clicks/drops
-                add   hl,de                  ; reach the app's menu handler via the normal path)
-                push  hl                     ; HL = entry+9
-                ld    hl,(wm_desc)
-                ld    de,6                   ; WM_FR_EVENT = desc.proc (#148): menu/drop come
-                add   hl,de                  ; through here too, so every message reaches the
-                ld    e,(hl)                 ; one WndProc (keyed by gb_msg.type)
+                inc   hl                     ; wm_register copied desc.proc to entry+7.
+                ld    e,(hl)
                 inc   hl
-                ld    d,(hl)                 ; DE = proc ptr
-                pop   hl                     ; HL = entry+9
+                ld    d,(hl)
+                inc   hl                     ; copy proc to WM_FR_EVENT for menu/drop
                 ld    (hl),e
                 inc   hl
-                ld    (hl),d                 ; REPAINT (entry+7,8) is garbage but the managed
-                                             ; flag means wm_repaint_all skips it; MENU (entry+
-                                             ; 11,12) temporarily contains task_worker but gb_doc
-                                             ; replaces it before the app returns to the WM loop
-                ld    a,(WM_FOCUS)           ; publish MW_RECT so the app can read gb_wm_x/y/w/h
-                call  wm_entry               ; in main, but DON'T draw yet: the app loads its
-                call  mw_publish             ; content then calls gb_restore_parent for the first
-                                             ; paint, so a window never shows empty during a slow
-                                             ; load (#146). A managed app MUST paint when ready.
-                                             ; mw_publish preserves A (still = WM_FOCUS), so:
-                jp    wm_set_clip            ; #153: pre-set the clip to the new window's rect so
-                                             ; that first gb_restore_parent repaints only OUR area,
-                                             ; not the whole desktop (the open "flash"); then
-                                             ; wm_repaint_all restores the full-screen clip.
+                ld    (hl),d
+                inc   hl
+                inc   hl
+                inc   hl                     ; entry+13 flags
+                set   1,(hl)
+                pop   hl
+                call  mw_publish             ; register now; the app paints when ready
+                ld    hl,MW_RECT             ; First paint exposes no old background. Use the
+                ld    de,clip_x              ; exact rect; keep wm_set_clip's guard for close.
+                ld    bc,4
+                ldir
+                ret
 
 ; mw_publish: HL = entry. Copy x,y,w,h -> MW_RECT (the app reads it via gb_wm_x/y/w/h);
 ; (mw_desc) = the descriptor pointer. HL preserved.
@@ -2232,45 +2216,27 @@ mwf_max         ld    a,(WM_FOCUS)
                 pop   hl                      ; HL = entry; save geom, then fill the screen
                 push  hl
                 inc   hl
-                ld    a,(hl)
-                ld    (wm_sav_x),a
-                ld    (hl),0
-                inc   hl
-                ld    a,(hl)
-                ld    (wm_sav_y),a
-                ld    (hl),8
-                inc   hl
-                ld    a,(hl)
-                ld    (wm_sav_w),a
-                ld    (hl),SCR_COLS
-                inc   hl
-                ld    a,(hl)
-                ld    (wm_sav_h),a
-                ld    (hl),SCR_LINES-8
-                jr    mwf_max_paint
+                push  hl
+                ld    de,wm_saved_rect
+                ld    bc,4
+                ldir
+                pop   de
+                ld    hl,wm_max_rect
+                jr    mwf_set_rect
 mwf_unmax       res   2,(hl)
                 pop   hl                      ; HL = entry; restore the saved geometry
                 push  hl
                 inc   hl
-                ld    a,(wm_sav_x)
-                ld    (hl),a
-                inc   hl
-                ld    a,(wm_sav_y)
-                ld    (hl),a
-                inc   hl
-                ld    a,(wm_sav_w)
-                ld    (hl),a
-                inc   hl
-                ld    a,(wm_sav_h)
-                ld    (hl),a
-mwf_max_paint   pop   hl                      ; HL = entry
+                ex    de,hl
+                ld    hl,wm_saved_rect
+mwf_set_rect    ld    bc,4
+                ldir
+                pop   hl                      ; HL = entry
                 call  mw_publish             ; refresh MW_RECT (the app reads gb_wm_x/y/w/h)
                 call  clip_set_full
                 jp    wm_repaint_all
-wm_sav_x        db    0
-wm_sav_y        db    0
-wm_sav_w        db    0
-wm_sav_h        db    0
+wm_saved_rect   defs  4
+wm_max_rect     db    0,8,SCR_COLS,SCR_LINES-8
                 endif
 mwf_content
                 ld    a,GB_MSG_CLICK         ; content (incl. grip) -> a content press
@@ -2498,52 +2464,44 @@ kwc_not_task
 ; clip to the damage = the bounding box of the old and new window rects, so the
 ; following gb_restore_parent only repaints there (no full-screen flicker).
 k_wm_setpos
-                ld    (sp_x),a                    ; new x
-                ld    a,l
-                ld    (sp_y),a                    ; new y
+                ld    h,l
+                ld    l,a
+                push  hl                          ; new x,y
                 ld    a,(WM_FOCUS)
-                call  wm_entry                    ; HL = entry (+0); damage_axis keeps HL
-                inc   hl                            ; +1 old x
-                ld    b,(hl)
+                call  wm_entry
                 inc   hl
-                inc   hl                            ; +3 w
-                ld    c,(hl)
-                ld    a,(sp_x)
-                call  damage_axis                 ; D = min(ox,nx), E = span
+                pop   de
+                push  de
+                ld    a,e
+                call  ksp_axis
                 ld    a,d
                 ld    (clip_x),a
                 ld    a,e
                 ld    (clip_w),a
-                dec   hl                            ; +2 old y
-                ld    b,(hl)
+                pop   de
+                ld    a,d
                 inc   hl
-                inc   hl                            ; +4 h
-                ld    c,(hl)
-                ld    a,(sp_y)
-                call  damage_axis
+                call  ksp_axis
                 ld    a,d
                 ld    (clip_y),a
                 ld    a,e
                 ld    (clip_h),a
-                dec   hl                            ; +4 -> +1 (x)
-                dec   hl
-                dec   hl
-                ld    a,(sp_x)                     ; commit the new position
+                ret
+ksp_axis        ld    b,(hl)                      ; capture old coordinate before committing new
                 ld    (hl),a
                 inc   hl
-                ld    a,(sp_y)
-                ld    (hl),a
-                ret
-sp_x            equ   #124B        ; low-RAM WM scratch (see lowram.tsv)
-sp_y            equ   #124C
+                inc   hl
+                ld    c,(hl)                      ; size on this axis
+                dec   hl
+                dec   hl
+                jr    damage_axis
 
 ; k_wm_setsize (GB_WMSETSIZE, #81): A = new w, L = new h. Resize the focused window's
 ; rect (top-left stays put). Damage clip = its (x,y) covering max(old,new) size, so the
 ; following gb_restore_parent repaints any area a shrink vacated.
 k_wm_setsize
-                ld    (ss_w),a
-                ld    a,l
-                ld    (ss_h),a
+                push  af                          ; new width
+                ld    c,l                         ; new height; wm_entry preserves C
                 ld    a,(WM_FOCUS)
                 call  wm_entry                    ; HL = entry (+0 page)
                 inc   hl                            ; +1 x
@@ -2553,28 +2511,20 @@ k_wm_setsize
                 ld    a,(hl)
                 ld    (clip_y),a
                 inc   hl                            ; +3 w
-                ld    b,(hl)                       ; old w
-                ld    a,(ss_w)                     ; clip w = max(old, new)
-                cp    b
-                jr    nc,kss_w
-                ld    a,b
-kss_w
+                pop   af
+                call  kss_axis
                 ld    (clip_w),a
-                ld    a,(ss_w)
-                ld    (hl),a                       ; commit new w
                 inc   hl                            ; +4 h
-                ld    b,(hl)                       ; old h
-                ld    a,(ss_h)
-                cp    b
-                jr    nc,kss_h
-                ld    a,b
-kss_h
+                ld    a,c
+                call  kss_axis
                 ld    (clip_h),a
-                ld    a,(ss_h)
-                ld    (hl),a                       ; commit new h
                 ret
-ss_w            equ   #124D        ; low-RAM WM scratch (see lowram.tsv)
-ss_h            equ   #124E
+kss_axis        ld    b,(hl)
+                ld    (hl),a                       ; commit new size; damage max(old,new)
+                cp    b
+                ret   nc
+                ld    a,b
+                ret
 
 ; damage_axis: B = old, A = new, C = size -> D = min(old,new), E = span =
 ; max(old,new) + size - min. The 1-D damage extent of a move. Preserves HL.
@@ -2648,10 +2598,7 @@ wm_focus_click
                 ld    c,a                          ; c = clicked app slot
                 ld    a,(WM_NWIN)               ; already the z-top? then nothing to raise
                 dec   a
-                ld    hl,WM_Z
-                add   a,l
-                ld    l,a
-                ld    a,(hl)
+                call  wm_z_slot
                 cp    c
                 ret   z
                 ld    a,c
@@ -2670,10 +2617,7 @@ wht_l           ld    a,(wm_hz)
                 jr    z,wht_none
                 dec   a
                 ld    (wm_hz),a
-                ld    hl,WM_Z
-                add   a,l
-                ld    l,a
-                ld    a,(hl)                       ; slot = WM_Z[i]
+                call  wm_z_slot
                 call  wm_entry                     ; HL = entry
                 inc   hl                            ; +1 x
                 ld    a,(POLL_MX)
@@ -2696,10 +2640,7 @@ wht_l           ld    a,(wm_hz)
                 cp    (hl)
                 jr    nc,wht_l                      ; my-y >= h
                 ld    a,(wm_hz)                     ; hit -> recover slot
-                ld    hl,WM_Z
-                add   a,l
-                ld    l,a
-                ld    a,(hl)
+                call  wm_z_slot
                 or    a                             ; clear CF
                 ret
 wht_none        scf
@@ -2881,8 +2822,32 @@ wm_raise
 ; on_repaint), then restore the caller's page. The cursor is left to the handlers:
 ; each on_repaint redraws over the old pointer (a full backdrop fill, or a leading
 ; gb_curhide) and ends with gb_curshow, so the cursor stays correct with no double
-; save-under here. WM_Z[0] is always the desktop, so its full paint runs first.
+; save-under here. Start at the desktop unless the top window covers all damage.
 wm_repaint_all
+                ld    a,(WM_NWIN)
+                sub   1
+                jr    c,wra_bottom
+                ld    c,a                          ; z-index; wm_entry preserves C
+                call  wm_z_slot
+                call  wm_entry
+                ld    de,WM_FR_FLAGS
+                add   hl,de
+                ld    a,(hl)
+                and   3                            ; legacy hit rects need not be opaque
+                cp    3                            ; live AND managed
+                jr    nz,wra_bottom
+                ld    de,1-WM_FR_FLAGS
+                add   hl,de                        ; entry.x
+                ld    de,clip_x
+                call  wra_inside_axis
+                jr    c,wra_bottom
+                inc   hl
+                inc   de
+                call  wra_inside_axis
+                jr    c,wra_bottom
+                ld    a,c                          ; only the top can be visible in this clip
+                jr    wra_seed
+wra_bottom
                 xor   a
                 jr    wra_seed
 ; wm_repaint_top: repaint only the current z-top. Used after click-to-focus raises an
@@ -2907,10 +2872,7 @@ wra_l           ld    a,(wm_rp_i)
                 ld    hl,WM_NWIN
                 cp    (hl)
                 jr    nc,wra_done
-                ld    hl,WM_Z
-                add   a,l
-                ld    l,a
-                ld    a,(hl)                       ; slot = WM_Z[i]
+                call  wm_z_slot
                 call  wm_entry                     ; HL = entry
                 push  hl                           ; #148 guard: never paint a dead slot
                 ld    de,WM_FR_FLAGS
@@ -2955,6 +2917,29 @@ wra_done        ld    a,(wm_rp_back)
                                                   ; redraw, or we'd save cur_bg OVER the cursor's own
                                                   ; pixels and stamp a ghost on the next move.
 
+; Carry if the damage interval is not inside the opaque interval. Use relative
+; lengths, not 8-bit endpoints (a guarded right edge can extend off screen).
+; HL = window origin, DE = clip origin; lengths at +2. Preserve HL, DE, C.
+wra_inside_axis ld    a,(de)
+                sub   (hl)
+                ret   c
+                ld    b,a
+                inc   de
+                inc   de
+                ld    a,(de)
+                dec   de
+                dec   de
+                add   a,b
+                ret   c
+                ld    b,a
+                inc   hl
+                inc   hl
+                ld    a,(hl)
+                dec   hl
+                dec   hl
+                cp    b
+                ret
+
 ; k_wm_damage (GB_WMDAMAGE): set the repaint clip to a caller-supplied damage rect,
 ; so the next gb_restore_parent only repaints that region instead of the whole
 ; screen (#153 - kills the full-desktop flash after a dropdown menu). gb_popup
@@ -2994,6 +2979,13 @@ wm_set_clip
                 inc   hl                            ; +4 h
                 ld    a,(hl)
                 ld    (clip_h),a
+                ret
+
+; A = z-index -> A = slot. WM_Z fits within one 256-byte page.
+wm_z_slot       ld    hl,WM_Z
+                add   a,l
+                ld    l,a
+                ld    a,(hl)
                 ret
 
 ; wm_entry: A = slot index -> HL = WM_TABLE + A*WM_ESZ. Clobbers A,B,DE.
