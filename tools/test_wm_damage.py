@@ -32,6 +32,14 @@ def run_suite(raw, symbols):
             if not actual or int(actual[1], 16) != expected:
                 raise AssertionError(f"{case}: expected A={expected}\n{result.stdout}")
 
+        # The DOS loader left 0xC9 in WM_DRAGMOV on MSX. Bit 7 must be clear
+        # before File Manager can claim its first scan. At pool entry, read the
+        # flag and also verify the clear stopped before APP_NPAGES.
+        pool = labels["APP_POOL_INIT"]
+        probe = [0x3a, 0x37, 0x14, 0xee, 0xa5, 0x47, 0x3a, 0x2f, 0x14, 0xb0]
+        check("cold boot claim", [(0x142f, [0xc9]), (0x1437, [0xa5]), (pool, probe)],
+              labels["WM_BOOT_INIT"], pool + len(probe), 0)
+
         base = [(count, [3]), (focus, [2]), (zorder, [0, 2, 1]),
                 (rect, [10, 20, 40, 80]), (flags, [3])]
         for name, damage, override, expected in [
