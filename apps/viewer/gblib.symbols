@@ -22,6 +22,7 @@ gb_restorerect
 gb_set_name
 gb_set_drive
 gb_text
+gb_textbw
 gb_ui
 gb_wm_close
 gb_wm_damage

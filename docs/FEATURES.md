@@ -62,7 +62,10 @@ backdrop, dragging icons, opening apps and menus:
   pictures. Tool icons live in `PAINT.IST`.
 - **Viewer** — open `.PIC` images in a window sized to the picture. File > Load
   selects another picture and View > Fullscreen maximises it; windows remain
-  draggable and resizeable, with horizontal and vertical scrolling. Viewer uses
+  draggable and resizeable, with horizontal and vertical scrolling. Click the
+  boxed `-` and `+` buttons at the bottom right, or use the same keys even in
+  fullscreen, to step between 50%, 100%, 200% and 400%.
+  Each new picture starts at 100%. Viewer uses
   borrowed RAM banks for fast redraws. If other windows or pictures occupy the
   remaining banks, it reads the visible rows from disk in bounded chunks instead
   of failing solely because a picture cache page is unavailable. Concurrent

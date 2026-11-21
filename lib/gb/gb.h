@@ -438,6 +438,7 @@ unsigned char gb_doc_modified(void);       /* is it dirty? (e.g. for a "*" in th
 const char   *gb_doc_name(void);           /* the current file's 11-byte 8.3 name */
 unsigned char gb_doc_close(void);          /* on the close gadget: confirm-if-dirty; 1=close ok */
 unsigned char gb_doc_event(void);          /* in on_event: 1 if the framework handled it */
+unsigned char gb_doc_frame_key(unsigned char c); /* DOCRO: dispatch using an already-polled key */
 unsigned char gb_doc_frame(void);          /* in on_frame: ran a menu? 0 = no, or Copy/cancel (the
                                             * menu saved-under, nothing to repaint); 2 = Edit content
                                             * change (redraw your body); 3 = File/View action (full
