@@ -178,7 +178,7 @@ fi
                                    # and clip-aware wallpaper repaint path.
 FILEMGR_APP_PROBE=1
 if [ "$PREEMPTIVE" = "1" ]; then FILEMGR_APP_PROBE=0; fi
-APP_CFLAGS="--max-allocs-per-node 5000" DATA_LOC=0x7960 DOC=1 SCROLL=1 APP_PROBE="$FILEMGR_APP_PROBE" REPAINTTOP=1 tools/build_capp.sh apps/filemgr build/FILEMGR.RAW # FILEMGR: tight split; app-specific icon names use a compact table
+APP_CFLAGS="--opt-code-size --max-allocs-per-node 30000" DATA_LOC=0x7960 DOC=1 SCROLL=1 APP_PROBE="$FILEMGR_APP_PROBE" REPAINTTOP=1 tools/build_capp.sh apps/filemgr build/FILEMGR.RAW # FILEMGR: tight split; app-specific icon names use a compact table
                                    # the gb_doc-grown code + ".." entry; the 128-entry listing cache
                                    # (#118) fits the rest. DOC=1 = View menu (Fullscreen/Icons-List) (#142)
 APP_ICON=apps/viewer/icon.asm GBLIB_SRC="$VIEWER_GBLIB" DATA_LOC=0x68B0 DOCRO=1 SCROLL16=1 REPAINTTOP=1 tools/build_capp.sh apps/viewer build/VIEWER.RAW # VIEWER: image-only, read-only

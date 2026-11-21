@@ -68,6 +68,32 @@ def run_suite(raw, symbols):
                     code += [0x3a, at & 255, at >> 8, 0xee, byte, 0xb0, 0x47]
             check(routine, setup + [(0x6000, code)], 0x6000, 0x6000 + len(code), 0)
 
+        if "FSMX_FOCUS_DIR" in labels:
+            # Mock DOS's single live CWD at 0x5200. GETCD omits the leading
+            # backslash; CHDIR must receive it. Two dirs on the same drive
+            # reproduce Paint's picker leaving File Manager in /PICS.
+            owner = labels["FSMX_CWD_OWNER"]
+            dirs = labels["FSMX_WINDOW_DIRS"]
+            stride = (labels["FSMX_DRAG_SOURCE"] - dirs) // 8  # 8 WM slots
+            filemgr = list(b"\\GBENCH\0")
+            paint = list(b"\\PICS\0")
+            bdos = [0x79, 0xfe, 0x59, 0x20, 5,       # GETCD?
+                    0x21, 1, 0x52, 0x18, 4,            # HL = CWD+1
+                    0xeb, 0x11, 0, 0x52,               # CHDIR: HL=path, DE=CWD
+                    0x01, 8, 0, 0xed, 0xb0, 0xaf, 0xc9]
+            setup = [(5, bdos), (labels["FSMX_RESTORE_PAGE"], [0xc9]),
+                     (labels["FS_SET_DRIVE"], [0x32, 0x35, 0x13, 0xc9]),
+                     (0x1335, [0]), (0x5200, paint), (owner, [2]), (focus, [1]),
+                     (dirs + stride, [0] + filemgr)]
+            for alive in (0, 1):
+                # On close the discarded slot must not overwrite the saved parent.
+                check_call("FSMX_FOCUS_DIR", setup + [(table + 50 + 13, [alive]),
+                           (dirs + 2 * stride, [0xff])], [],
+                           [(owner, [1]), (0x5200, filemgr),
+                            (dirs + 2 * stride, [0] + paint if alive else [0xff])])
+            check_call("FSMX_FOCUS_DIR", setup + [(owner, [1])], [],
+                       [(0x5200, paint)])  # no BDOS work when focus hasn't changed
+
         for routine, args, geometry, damage in [
             ("K_WM_SETPOS", (6, 31), [6, 31, 40, 80], [6, 20, 44, 91]),
             ("K_WM_SETSIZE", (50, 60), [10, 20, 50, 60], [10, 20, 50, 80]),

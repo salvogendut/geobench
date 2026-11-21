@@ -423,6 +423,68 @@ fsl_cd
                 jp    fsmx_restore_page
 
 ; --- directory enumeration ---------------------------------------------------
+; DOS has one live browse context. Preserve it when a window is suspended;
+; merely repainting a window or polling the same focus does not call DOS.
+FSMX_CTX_LEN    equ   66                      ; drive slot, backslash, ASCIIZ _GETCD (64)
+fsmx_window_ctx ld    hl,fsmx_window_dirs
+                ld    de,FSMX_CTX_LEN
+                or    a
+                ret   z
+                ld    b,a
+fsmx_ctx_next   add   hl,de
+                djnz  fsmx_ctx_next
+                ret
+
+fsmx_save_window
+                call  fsmx_window_ctx
+fsmx_save_ctx   ld    a,(fs_cur_drive)
+                ld    (hl),a
+                push  hl
+                inc   hl
+                ld    (hl),92
+                inc   hl
+                ex    de,hl
+                ei
+                push  ix
+                ld    b,0
+                ld    c,_GETCD
+                call  BDOS
+                pop   ix
+                pop   hl
+                or    a
+                jr    z,fsmx_save_done
+                ld    (hl),#FF                 ; never restore a partial pathname
+fsmx_save_done  jp    fsmx_restore_page
+
+fsmx_load_ctx   ld    a,(hl)
+                cp    #FF
+                ret   z
+                inc   hl
+                push  hl
+                call  fs_set_drive
+                pop   de                       ; absolute path, including root
+                ei
+                push  ix
+                ld    c,_CHDIR
+                call  BDOS
+                pop   ix
+                jp    fsmx_restore_page
+
+fsmx_focus_dir  ld    hl,WM_FOCUS
+                ld    a,(fsmx_cwd_owner)
+                cp    (hl)
+                ret   z
+                call  wm_entry
+                ld    de,WM_FR_FLAGS
+                add   hl,de
+                bit   0,(hl)                   ; no need to snapshot a closing window
+                ld    a,(fsmx_cwd_owner)
+                call  nz,fsmx_save_window
+                ld    a,(WM_FOCUS)
+                ld    (fsmx_cwd_owner),a
+                call  fsmx_window_ctx
+                jr    fsmx_load_ctx
+
 ; fs_dir_first / fs_dir_next -> CF set = entry ready in fs_ent_*, NC = done.
 fs_dir_first
                 ei
@@ -854,6 +916,10 @@ fsmx_cwdsl      db    92                      ; "\" prefix, falls into the CWD b
 fsmx_cwd        ds    64                      ; _GETCD result (no leading slash)
 fsmx_path       ds    16                      ; "FILENAME.EXT",0
 fsmx_fib        ds    64                      ; the _FFIRST/_FNEXT fileinfo block
+fsmx_cwd_owner  db    0
+fsmx_window_dirs ds   WM_MAXWIN*FSMX_CTX_LEN
+fsmx_drag_source ds   FSMX_CTX_LEN
+fsmx_copy_dest   ds   FSMX_CTX_LEN
 fs_dir_clus     ds    4                       ; dummy: k_copy_begin/end context swap
 
 ; fixed low-RAM cells: the same contract addresses as the CPC dispatcher

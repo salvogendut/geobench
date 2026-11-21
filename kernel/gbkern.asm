@@ -1886,6 +1886,12 @@ k_get_drive
 ; k_copy_begin (GB_COPYBEGIN): save the current (target) drive+dir, then switch to the
 ; source drive+dir, so the caller can load the dragged file. Pairs with k_copy_end.
 k_copy_begin
+                ifdef PLATFORM_MSX
+                ld    hl,fsmx_copy_dest
+                call  fsmx_save_ctx
+                ld    hl,fsmx_drag_source
+                jp    fsmx_load_ctx
+                else
                 ld    a,(fs_cur_drive)        ; save the caller's (target) context
                 ld    (cb_tdrv),a
                 ld    hl,fs_dir_clus
@@ -1899,9 +1905,14 @@ k_copy_begin
                 ld    bc,4
                 ldir
                 ret
+                endif
 ; k_copy_end (GB_COPYEND): restore the saved (target) drive+dir, so the caller can
 ; re-list its own directory.
 k_copy_end
+                ifdef PLATFORM_MSX
+                ld    hl,fsmx_copy_dest
+                jp    fsmx_load_ctx
+                else
                 ld    a,(cb_tdrv)
                 call  fs_set_drive
                 ld    hl,cb_tdir
@@ -1909,6 +1920,7 @@ k_copy_end
                 ld    bc,4
                 ldir
                 ret
+                endif
 cb_tdrv         equ   #123F        ; low-RAM kernel scratch (see lowram.tsv)
 cb_tdir         equ   #1481        ; #188: relocated to low RAM (was resident defs 4)
 
@@ -2062,6 +2074,9 @@ wm_register
                 call  copy11
                 ld    a,(wm_slot)                 ; focus + append the new window (z-top)
                 ld    (WM_FOCUS),a
+                ifdef PLATFORM_MSX
+                ld    (fsmx_cwd_owner),a          ; new slot inherits the live DOS directory
+                endif
                 jr    wm_z_append                  ; A = slot; tail-call (rets to wm_register's caller)
 
 ; ===== managed windows (#146): the kernel owns the chrome ====================
@@ -2406,6 +2421,10 @@ wm_open_go
                 jr    wmo_loaded
 wmo_load_sys    call  fs_load_sys                 ; normal app open: boot-first, browse-fallback
 wmo_loaded      jr    nc,wmo_fail
+                ifdef PLATFORM_MSX
+                ld    a,(WM_FOCUS)                 ; child's main may navigate before it returns
+                call  fsmx_save_window
+                endif
                 ei
                 call  APP_BASE                    ; main -> GB_WMADD + paint, then ret
                 di
@@ -2545,6 +2564,9 @@ dax_span        add   a,c                           ; max + size
 ; On a focus change, also swap the top-bar menu to the focused window's (or clear
 ; it) so the bar shows the right menu and clicks reach the right handler.
 wm_map_focus
+                ifdef PLATFORM_MSX
+                call  fsmx_focus_dir
+                endif
                 ld    a,(WM_FOCUS)
                 call  wm_entry                    ; HL = entry
                 ld    a,(hl)                       ; page (+0)
@@ -2749,6 +2771,18 @@ ds_norel
                 ld    (WM_FOCUS),a
                 jr    ds_click                      ; no handler -> treat as a click
 ds_drop
+                ifdef PLATFORM_MSX
+                push  hl
+                push  bc
+                call  fsmx_focus_dir               ; drop handler runs in its own directory
+                ld    a,(WM_DRAGSRC)
+                call  fsmx_window_ctx
+                ld    de,fsmx_drag_source          ; stable across all chunks of a copy
+                ld    bc,FSMX_CTX_LEN
+                ldir
+                pop   bc
+                pop   hl
+                endif
                 ld    a,GB_MSG_DROP
                 ld    (GB_MSG),a
                 ld    a,c                           ; map the target's page, call it
@@ -2766,6 +2800,9 @@ ds_drop_source
                 else
                 ld    a,(WM_DRAGSRC)
                 ld    (WM_FOCUS),a
+                endif
+                ifdef PLATFORM_MSX
+                call  fsmx_focus_dir
                 endif
                 ld    a,(wm_drag_pg)              ; restore the source page
                 call  bank_set
