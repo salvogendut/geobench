@@ -65,26 +65,6 @@ vdp_setrd
                 ei
                 ret
 
-; vdp_setwr16: HL = absolute VRAM address (0..65535) -> write mode. For the
-; sprite tables (#F000+). Clobbers A. DI/EI inside.
-vdp_setwr16
-                di
-                ld    a,h
-                rlca
-                rlca
-                and   3                       ; A16..A14
-                out   (VDP_CTRL),a
-                ld    a,14|#80
-                out   (VDP_CTRL),a
-                ld    a,l
-                out   (VDP_CTRL),a
-                ld    a,h
-                and   #3F
-                or    #40
-                out   (VDP_CTRL),a
-                ei
-                ret
-
 ; vdp_reg: A = value, C = register number. Clobbers A.
 vdp_reg
                 di
@@ -805,27 +785,7 @@ msx_video_init
                 ld    (#F3E0),a
                 ld    c,1
                 call  vdp_reg
-                ld    hl,SPR_ATTR             ; park sprites 0/1, terminate at 2
-                call  vdp_setwr16
-                di
-                ld    a,217                   ; sprite 0: parked (below line 212)
-                out   (VDP_DATA),a
-                xor   a
-                out   (VDP_DATA),a            ; x = 0
-                out   (VDP_DATA),a            ; pattern 0
-                out   (VDP_DATA),a            ; (reserved)
-                ld    a,217                   ; sprite 1: parked
-                out   (VDP_DATA),a
-                xor   a
-                out   (VDP_DATA),a
-                ld    a,4                     ; pattern 4
-                out   (VDP_DATA),a
-                xor   a
-                out   (VDP_DATA),a
-                ld    a,216                   ; sprite 2: y=216 terminates the scan
-                out   (VDP_DATA),a
-                ei
-                ret
+                jp    cursor_hide_both       ; no cursor during the boot splash
 
 ; --- HMMV register block (streamed to R#36..R#46) ----------------------------
 vc_dx           dw    0                       ; R36-37 DX (pixels)
