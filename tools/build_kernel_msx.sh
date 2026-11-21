@@ -108,7 +108,7 @@ else
     APPDEFS="-DGB_MSX2" DATA_LOC=0x7100 DOC=1 TITLEBAR=1 \
         tools/build_capp.sh apps/desktop build/msx/DESKTOP.RAW
 fi
-APPDEFS="-DGB_MSX2" APP_CFLAGS="--max-allocs-per-node 5000" DATA_LOC=0x7960 DOC=1 SCROLL=1 REPAINTTOP=1 tools/build_capp.sh apps/filemgr build/msx/FILEMGR.RAW
+APPDEFS="-DGB_MSX2" APP_CFLAGS="--opt-code-size --max-allocs-per-node 30000" DATA_LOC=0x7960 DOC=1 SCROLL=1 REPAINTTOP=1 tools/build_capp.sh apps/filemgr build/msx/FILEMGR.RAW
 APP_ICON=apps/notepad/icon.asm GBLIB_SRC="$NOTEPAD_GBLIB" APPDEFS="-DGB_MSX2 $NOTEPAD_APPDEFS" APP_CFLAGS="$NOTEPAD_CFLAGS" DATA_LOC="$NOTEPAD_DATA_LOC" DOC=1 REPAINTTOP="$NOTEPAD_SCROLL" tools/build_capp.sh apps/notepad build/msx/NOTEPAD.RAW
 APPDEFS="-DGB_MSX2" APP_CFLAGS="--opt-code-size --max-allocs-per-node 100000" DATA_LOC=0x7C40 DIALOGS=1 STEPPER=1 SELECTOR=1 ACTIONS=1 TITLEBAR=1 tools/build_capp.sh apps/settings build/msx/SETTINGS.RAW
 APPDEFS="-DGB_MSX2" DIALOGS=1 BUTTON=1 tools/build_capp.sh apps/diskutil build/msx/DISKUTIL.RAW  # FAT12 quick-format (WRABS)

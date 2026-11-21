@@ -36,14 +36,7 @@ kernel_main
                 call  boot_tick              ; #196: bar 2/4
                 call  clock_init
                 call  boot_tick              ; #196: bar 3/4
-                ld    hl,WM_NWIN            ; clear WM low-RAM state
-                ld    de,WM_NWIN+1
-                ld    bc,WM_Z+WM_MAXWIN-WM_NWIN-1
-                ld    (hl),0
-                ldir
-                call  app_pool_init
-                ld    a,#FF
-                ld    (WM_FPREV),a
+                include "wm_boot_init.inc"
                 ld    hl,kern_end-GB_KERNEL
                 ld    (GB_KSIZE),hl
                 ifdef GB_FSTEST              ; #287: deterministic BDOS write-path self-test.

@@ -14,6 +14,7 @@
  * rect-clipped repaint); the contents - views, grid, scrollbar - are drawn here
  * with gb_dir*, gb_blite, gb_fill/gb_frame/gb_text. No kernel changes. */
 #include "gb.h"
+#include <string.h>
 
 #define DEF_X    4            /* window position */
 #define DEF_Y    26
@@ -256,14 +257,14 @@ __endasm;
 #endif
 #endif
 
-/* dir_seek: position the dir cursor at absolute index idx; return its name (0 if
-   past the end). The caller continues with gb_dirn() from there. */
-static char *dir_seek(unsigned char idx)
+/* Revalidate the displayed 8.3 identity. A short/changed directory must
+   never dispatch using the last entry left in the shared enumerator. */
+static unsigned char seek_entry(const char *name)
 {
-    unsigned char i;
-    char *p = gb_dir1();
-    for (i = 0; i < idx && p; i++) p = gb_dirn();
-    return p;
+    char *p;
+    for (p = gb_dir1(); p; p = gb_dirn())
+        if (!memcmp(name, gb_entname(), 11)) return 1;
+    return 0;
 }
 
 /* cfg_view_pos: index just past "VIEW=" in cfgbuf, or 0xFFFF if there's no such key. */
@@ -967,10 +968,10 @@ static void select_entry(unsigned char pos)
 /* draw_body: the window CONTENT (scrollbar + listing + grip); the WM drew the frame (#146). */
 static void draw_body(void)
 {
-    gb_set_drive(my_drive);              /* this window's drive (#65) - a repaint may run
-                                            while another window's drive is active */
 #ifdef GB_PREEMPTIVE
-    icon_scan_reset();
+    icon_scan_reset();                   /* draw from cache; don't change another app's drive */
+#else
+    gb_set_drive(my_drive);
 #endif
     draw_scrollbar();
     if (view == V_ICONS) draw_icons_view();
@@ -1126,10 +1127,10 @@ static unsigned char ext_is(const char *e, char a, char b, char c)
      .BAS             a GB-BASIC program -> opens in BASIC.APP
      .BIN             a native binary -> an info note (exec unimplemented, #236)
      anything else    no associated GEOBENCH application */
-static void open_entry(unsigned char idx)
+static void open_entry(const char *name)
 {
     char *e;
-    dir_seek(order[idx]);          /* sorted display index -> raw entry (sets attr/cluster) */
+    if (!seek_entry(name)) return;
     if (gb_isdir()) { path_push(fullname()); gb_chdir(); relist(); return; }
     if (gb_wm_full()) {            /* every app bank is taken - say so, don't dead-click (#153) */
         gb_alert("Sorry, not enough RAM", "to run more apps.");
@@ -1462,6 +1463,7 @@ static void fm_drag(void)
 static void fm_click(void)
 {
     unsigned char mx, my, idx;
+    const char *name;
 
     sync_rect();
     gb_set_drive(my_drive);
@@ -1525,8 +1527,8 @@ static void fm_click(void)
         idx = (unsigned char)(idx - up_avail());   /* display position -> sorted real index */
         /* press on an entry: a drag (press + move) drags it to another window /
            the Trash (#62); a plain click (no move) falls through to select/open */
-        dir_seek(order[idx]);                /* sorted index -> raw entry for gb_entname */
-        if (gb_drag_start(gb_entname())) {   /* dropped on a target -> it handled it */
+        name = NAME_AT(order[idx]);
+        if (gb_drag_start(name)) {           /* takes an explicit name; no disk seek on selection */
 #ifdef GB_PREEMPTIVE
             if (!gb_drop_claimed()) relist(); /* an async target owns focus + its own repaint */
 #else
@@ -1535,7 +1537,7 @@ static void fm_click(void)
             return;
         }
         if (dc_timer && dc_idx == (unsigned char)(idx + up_avail())) {   /* double-click -> open */
-            open_entry(idx);
+            open_entry(name);
             dc_timer = 0;
         } else {                              /* single click -> select */
             select_entry((unsigned char)(idx + up_avail() + 1));
