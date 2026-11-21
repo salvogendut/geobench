@@ -602,6 +602,13 @@ static void file_action(unsigned char sel)
 /* on_frame: drop a pending menu and dispatch it. Returns 1 if a menu ran (the
  * app should repaint its window, since the popup erased a hole in it). */
 unsigned char gb_doc_frame(void)
+#ifdef GBDOC_RO
+{
+    return gb_doc_frame_key(gb_getkey());
+}
+
+unsigned char gb_doc_frame_key(unsigned char c)
+#endif
 {
     unsigned char t, sel;
 #ifdef GBDOC_BOUNDED_IO
@@ -612,7 +619,6 @@ unsigned char gb_doc_frame(void)
 #ifdef GBDOC_RO
     if (g_doc->on_fullscreen) {                       /* read-only viewers: 'F' toggles fullscreen -
                                                          the only way back once the bar+menu hide */
-        unsigned char c = gb_getkey();                /* one/frame is fine; this runs every frame */
         if ((c | 0x20) == 'f') { view_action(0); return 1; }   /* 'F' or 'f' */
     }
 #endif
