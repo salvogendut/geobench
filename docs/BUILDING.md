@@ -253,3 +253,65 @@ The default Philips NMS 8250 definition exposes one drive, so swap
 `EXTRAS.DSK` into drive A after boot. With a two-drive machine definition, set
 `MSX_MACHINE` appropriately and pass
 `MSX_DISKB=QA/MSX/Floppies/EXTRAS.DSK`.
+
+## Experimental AgonLight2 target
+
+From the checkout root, run `make run-agon`. This builds a standalone MOS
+program, then launches **Fab Agon Emulator** (Flatpak
+`io.github.tomm.fab_agon_emulator`) with **only the staged SD directory**
+granted read-only for this run. At the MOS prompt enter `geobench`.
+Click **SD:** to open the card at its root. With no mouse, use the four
+**cursor keys** to move the pointer and **Space** to left-click. Tap an arrow
+to move one pixel, hold it for continuous motion, or hold two arrows to move
+diagonally. **Shift+arrow** takes an eight-pixel step. This works
+without an input setting, including on Calculator's buttons. **F** also opens
+File Manager. Click an entry to select it; double-click to open. Click **View**
+in the title bar or press **V** to switch
+between icon and list views. Open **PICS** and double-click a picture such as
+`1984.PIC` (four pens) or `46416.PIC` (sixteen pens). The Agon picture preview
+shows the whole image, scaled down only when needed. **Esc** or **X** returns
+to the same folder and selection. Alternatively, open
+**GBENCH**, then **CALC.APP**, and type `6x7=` to calculate 42. **Esc** returns
+to the same directory. Double-click **..** to go up; **Esc** or the window's
+**X** closes File Manager.
+On the desktop **C** is a Calculator shortcut, **W** toggles the wallpaper,
+and **Esc** returns to MOS.
+Try `dir` or launch it a second time. No changes to the emulator's normal SD
+card or startup scripts are needed.
+
+`make agon` stages `QA/AGON/CARD/GEOBENCH.BIN`, the sample `PICS/` directory,
+and `GBENCH/{FILEMGR.APP,DEFAULT.IST,CALC.APP,PICVIEW.APP}`. When updating
+the physical SD from the File Manager build, replace `GEOBENCH.BIN` and add
+`GBENCH/PICVIEW.APP` from the same card build. Calculator is byte-for-byte the
+shipped CPC binary, not a reimplementation. This target uses RASM and SDCC and is not
+part of the default CPC/MSX/PCW distribution build. The test baseline is
+Fab Agon Emulator 1.2.6 with its default Platform firmware; the graphics
+code requires the [buffer-backed bitmap commands](https://agonplatform.github.io/agon-docs/vdp/Bitmaps-API/)
+(VDP 2.2 or later). The browser uses the
+[FatFS directory calls in MOS 2.2 or later](https://agonplatform.github.io/agon-docs/mos/API/#0x91-ffs_dopen).
+Desktop startup and readable File Manager titles and filenames have been
+confirmed on a physical AgonLight2. Picture preview still needs a board test.
+
+In this prototype one guest is active at a time. File Manager is an Agon build
+of the shared `apps/filemgr/main.c`, with read-only MOS directory services and
+cached VDP bitmaps from the portable icon set. The launcher checks guest
+binaries against their built sizes and CRCs before entering them at `0x4000`.
+Launching Calculator or a picture from File Manager temporarily saves the
+parent's 16 KiB page in RAM and restores it when the child closes.
+The read-only `PICVIEW.APP` is a file association, not the full Viewer port:
+it accepts GBPC v2 modes 1, 6 and 7 up to 512x512, maps their pens to the
+active Agon palette, and fits the image inside 240x144. It has no zoom or
+editing controls. Opening other types of document is not supported yet.
+Its resident jump table at `0x8000` handles window registration, drawing with
+GEOBENCH's 6x8 font, keyboard input, pointer clicks and close. Closing the window restores
+the previous desktop from the cached VDP bitmap; quitting restores the MOS mode.
+File Manager uses 8.3 names. **B** on the desktop still opens the compact MOS
+browser for long-name-only files. Neither browser changes the MOS working
+directory. File writes, drag-and-drop, overlapping movable
+windows, and preemption are not implemented on Agon yet.
+
+For an automated check, `make test-agon` needs the Flatpak, Xvfb, xdotool,
+ImageMagick and Python with Pillow. It uses a private display and a temporary
+copy of the staged card. On the development machine those X11 tools are in
+`my-distrobox`; use
+`distrobox enter my-distrobox -- make test-agon AGON_TEST_HOST=distrobox-host-exec`.

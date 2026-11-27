@@ -66,6 +66,7 @@ fi
 # allowed one target to link another target's conditional drawing code. That is
 # fatal on MSX for CPC apps that write directly to #C000.
 case " $ALL_APPDEFS " in
+    *" -DGB_AGON "*) work="build/agon-obj/$(basename "$APP")" ;;
     *" -DGB_MSX2 "*) work="build/msx-obj/$(basename "$APP")" ;;
     *" -DGB_PCW "*)  work="build/pcw-obj/$(basename "$APP")" ;;
     *)                work="build/$(basename "$APP")" ;;

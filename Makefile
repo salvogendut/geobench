@@ -3,6 +3,74 @@
 
 all: cpc msx pcw
 
+# Opt-in Agon MOS bring-up; not a release target yet.
+AGON_CARD := QA/AGON/CARD
+RASM ?= rasm
+.PHONY: agon run-agon test-agon
+AGON_CALC := QA/CPC/CARD/GBENCH/CALC.APP
+AGON_FM := $(AGON_CARD)/GBENCH/FILEMGR.APP
+AGON_IST := $(AGON_CARD)/GBENCH/DEFAULT.IST
+AGON_PREVIEW := $(AGON_CARD)/GBENCH/PICVIEW.APP
+AGON_PICS := $(patsubst assets/pictures/%,$(AGON_CARD)/PICS/%,$(wildcard assets/pictures/*.PIC))
+agon: $(AGON_CARD)/GEOBENCH.BIN $(AGON_PICS) $(AGON_CARD)/GBENCH/CALC.APP $(AGON_FM) $(AGON_IST)
+
+$(AGON_CARD)/GEOBENCH.BIN: kernel/agon/boot.asm kernel/agon/input.asm kernel/agon/input.inc kernel/lowram.inc lib/gbapp.inc build/agon/runtime.bin build/agon/files.bin build/agon/calc.inc
+	mkdir -p $(@D)
+	$(RASM) $< -ob $@
+
+build/agon/runtime.bin: kernel/agon/runtime.asm kernel/agon/draw.asm kernel/agon/input.inc lib/gbapp.inc kernel/lowram.inc QA/CPC/CARD/GBENCH/DEFAULT.FNT
+	mkdir -p $(@D)
+	$(RASM) $< -ob $@
+
+# Resident MOS directory/icon services and compact long-name browser.
+build/agon/files.bin: kernel/agon/files.c kernel/agon/icons.c kernel/agon/files_entry.s lib/gb/gb.h lib/gb/gblib.s
+	mkdir -p $(@D)
+	sdasz80 -o $(@D)/files_entry.rel kernel/agon/files_entry.s
+	sdasz80 -o $(@D)/gblib.rel lib/gb/gblib.s
+	sdcc -mz80 --fomit-frame-pointer -Ilib/gb -c $< -o $(@D)/files.rel
+	sdcc -mz80 -c kernel/agon/icons.c -o $(@D)/icons.rel
+	sdcc -mz80 --no-std-crt0 --code-loc 0x8800 --data-loc 0xf200 $(@D)/files_entry.rel $(@D)/files.rel $(@D)/icons.rel $(@D)/gblib.rel -o $(@D)/files.ihx
+	makebin -s 65536 -p $(@D)/files.ihx $(@D)/files.flat
+	tail -c +34817 $(@D)/files.flat > $@
+
+# The guests have no executable header. Only enter the staged payloads.
+build/agon/calc.inc: $(AGON_CALC) $(AGON_FM) $(AGON_IST) $(AGON_PREVIEW) tools/agon_signatures.py
+	mkdir -p $(@D)
+	python3 tools/agon_signatures.py $(AGON_CALC) $(AGON_FM) $(AGON_IST) $(AGON_PREVIEW) > $@
+
+$(AGON_PREVIEW): kernel/agon/picview/main.c Makefile tools/build_capp.sh tools/build_cache.sh tools/check_app_layout.py lib/gb/gb.h lib/gb/gblib.s lib/gb/crt0.s
+	APPDEFS=-DGB_AGON APP_CFLAGS=--fno-omit-frame-pointer GBWIN=0 bash tools/build_capp.sh kernel/agon/picview build/agon/PICVIEW.RAW
+	mkdir -p $(@D)
+	cp build/agon/PICVIEW.RAW $@
+
+$(AGON_FM): apps/filemgr/main.c Makefile tools/build_capp.sh tools/build_cache.sh tools/check_app_layout.py lib/gb/gb.h lib/gb/gbwin.c lib/gb/gbdoc.c lib/gb/gbscroll.c lib/gb/gbui_stub.c lib/gb/gblib.s lib/gb/crt0.s
+	APPDEFS=-DGB_AGON APP_CFLAGS=--opt-code-size DATA_LOC=0x7800 DOCRO=1 SCROLL=1 bash tools/build_capp.sh apps/filemgr build/agon/FILEMGR.RAW
+	mkdir -p $(@D)
+	cp build/agon/FILEMGR.RAW $@
+
+$(AGON_IST): QA/CPC/CARD/GBENCH/DEFAULT.IST
+	mkdir -p $(@D)
+	cp $< $@
+
+$(AGON_CARD)/GBENCH/CALC.APP: $(AGON_CALC)
+	mkdir -p $(@D)
+	cp $< $@
+
+$(AGON_CARD)/PICS/%.PIC: assets/pictures/%.PIC
+	mkdir -p $(@D)
+	cp $< $@
+
+run-agon: agon
+	flatpak run --filesystem="$(abspath $(AGON_CARD)):ro" io.github.tomm.fab_agon_emulator --sdcard "$(abspath $(AGON_CARD))"
+
+build/agon/test_glyphs: tools/test_agon_glyphs.c kernel/agon/icons.c
+	mkdir -p $(@D)
+	$(CC) -std=c99 -O2 $< -o $@
+
+test-agon: agon build/agon/test_glyphs
+	build/agon/test_glyphs
+	xvfb-run -a -s "-screen 0 1024x768x24" python3 tools/test_agon_boot.py $(AGON_CARD) $(AGON_TEST_HOST)
+
 cpc:
 	bash tools/build_kernel.sh
 

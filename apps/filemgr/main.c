@@ -16,10 +16,17 @@
 #include "gb.h"
 #include <string.h>
 
+#ifdef GB_AGON
+#define DEF_X    8
+#define DEF_Y    16
+#define DEF_W    64
+#define DEF_H    168
+#else
 #define DEF_X    4            /* window position */
 #define DEF_Y    26
 #define DEF_W    56            /* default size; the window is resizeable (#81) */
 #define DEF_H    158           /* taller default so full icons still show ~3 rows (#88) */
+#endif
 #define CASCADE_X 4
 #define CASCADE_Y 4
 #define MIN_W    24            /* min size keeps the title + a couple of rows usable */
@@ -485,6 +492,8 @@ static const char *win_title(void)               /* "Disk C/path 32MiB free" -> 
     const char *d;
     msx_drive_title[5] = (char)gb_msx_drive_letter(my_drive);
     d = msx_drive_title;
+#elif defined(GB_AGON)
+    const char *d = "SD:";
 #else
     const char *d = drive_title[my_drive];
 #endif
@@ -622,7 +631,7 @@ static unsigned char appicon_native(unsigned char value)
 }
 #endif
 
-#ifndef GB_PREEMPTIVE
+#if !defined(GB_PREEMPTIVE) && !defined(GB_AGON)
 /* appicon_load: read and validate the GBAP resources into gb_copybuf. The File
    Manager's launch name is parked beyond the probe while gb_fs_load temporarily
    targets the APP. Mode 7 selects codec 7 when present; every other target/mode
@@ -709,7 +718,10 @@ static void draw_entry_type(unsigned char raw, unsigned char x, unsigned char y,
 {
     unsigned char state = icons[raw];
     unsigned char slot = (unsigned char)(state & APPICON_SLOTMASK);
-#ifdef GB_PREEMPTIVE
+#ifdef GB_AGON
+    if (half) gb_icon_half(slot, x, y);
+    else gb_icon(slot, x, y);
+#elif defined(GB_PREEMPTIVE)
     /* Repaints are storage-free. The frame job reloads and draws visible embedded
        icons after this generic placeholder has been painted. */
 #ifdef GB_PCW
@@ -976,7 +988,9 @@ static void draw_body(void)
     draw_scrollbar();
     if (view == V_ICONS) draw_icons_view();
     else                 draw_list_view();
+#ifndef GB_AGON
     gb_draw_grip(win_x, win_y, win_w, win_h);   /* resize grip, bottom-right (#81) */
+#endif
 }
 
 /* draw: interactive content redraw (manages the cursor) - the scroll/select paths use it
@@ -995,6 +1009,10 @@ static void draw(void)
    storage job can run while the focused File Manager handles this click. */
 static void scroll_draw(unsigned char old_top)
 {
+#ifdef GB_AGON
+    (void)old_top;
+    draw_body();        /* VDP icons are cached; no VRAM readback or disk I/O */
+#else
     unsigned char delta, row_h, rows, shift, copy_h, y, r;
 
     rows = vis_lines();
@@ -1036,6 +1054,7 @@ static void scroll_draw(unsigned char old_top)
         else                 draw_list_row(r);
     }
     gb_curshow();
+#endif
 }
 
 #ifdef GB_PREEMPTIVE
@@ -1131,12 +1150,22 @@ static void open_entry(const char *name)
 {
     char *e;
     if (!seek_entry(name)) return;
-    if (gb_isdir()) { path_push(fullname()); gb_chdir(); relist(); return; }
+    if (gb_isdir()) {
+#ifdef GB_AGON
+        if (strlen(fm_path) + strlen(fullname()) + 2 >= sizeof(fm_path)) {
+            gb_alert("Path too long", "Cannot open this folder.");
+            return;
+        }
+#endif
+        path_push(fullname()); gb_chdir(); relist(); return;
+    }
     if (gb_wm_full()) {            /* every app bank is taken - say so, don't dead-click (#153) */
         gb_alert("Sorry, not enough RAM", "to run more apps.");
         return;
     }
+#ifndef GB_AGON
     nsel = 0;
+#endif
     e = gb_entname();              /* the positioned entry's 11-byte 8.3 name */
     if (ext_is(e, 'A', 'P', 'P') || ext_is(e, 'S', 'A', 'V'))
         gb_wm_open(e);                          /* #234: run the app/screensaver image itself */
@@ -1400,6 +1429,9 @@ static void fm_frame(void)
 {
     sync_rect();
     gb_set_drive(my_drive);              /* re-assert our drive each focused frame (#65) */
+#ifdef GB_AGON
+    if ((gb_getkey() | 32) == 'v') fm_view(0);
+#endif
 #ifdef GB_PREEMPTIVE
     if (copy_state != COPY_IDLE) { copy_step(); return; }
     if (list_state != LIST_IDLE) { list_step(); return; }
@@ -1464,6 +1496,13 @@ static void fm_click(void)
 {
     unsigned char mx, my, idx;
     const char *name;
+#ifdef GB_AGON
+    /* Agon's input loop sleeps between events instead of sending idle frames. */
+    static unsigned long last_click;
+    unsigned long now = *(volatile unsigned long *)0x17f4;
+    if (now-last_click > 100) dc_timer = 0;
+    last_click = now;
+#endif
 
     sync_rect();
     gb_set_drive(my_drive);
@@ -1475,6 +1514,7 @@ static void fm_click(void)
 #endif
 
     /* resize grip (bottom-right corner) -> resize the window (#81) */
+#ifndef GB_AGON
     if (gb_in_grip(win_x, win_y, win_w, win_h, mx, my)) {
         if (gb_drag_resize(win_x, win_y, &win_w, &win_h, MIN_W, MIN_H)) {
             gb_wm_setsize(win_w, win_h);
@@ -1484,6 +1524,7 @@ static void fm_click(void)
         }
         return;
     }
+#endif
 
     /* scrollbar: shared arrows/page regions plus the app-owned thumb drag loop */
     if (mx >= SB_X && mx < SB_X + SB_W && my >= CT_Y && my < CT_BOT) {
