@@ -258,14 +258,20 @@ The default Philips NMS 8250 definition exposes one drive, so swap
 
 From the checkout root, run `make run-agon`. This builds a standalone MOS
 program, then launches **Fab Agon Emulator** (Flatpak
-`io.github.tomm.fab_agon_emulator`) with **only the staged SD directory**
-granted read-only for this run. At the MOS prompt enter `geobench`.
-Click **SD:** to open the card at its root. With no mouse, use the four
+`io.github.tomm.fab_agon_emulator`) with a writable SD copy in
+`build/agon-sd/`. Settings can persist between runs without changing the
+distribution in `QA/AGON/CARD/`. At the MOS prompt enter `geobench`.
+The desktop uses 320x240 (4:3) video. Click the SD card icon or its **SD:**
+caption to open the card at its root. With no mouse, use the four
 **cursor keys** to move the pointer and **Space** to left-click. Tap an arrow
 to move one pixel, hold it for continuous motion, or hold two arrows to move
 diagonally. **Shift+arrow** takes an eight-pixel step. This works
 without an input setting, including on Calculator's buttons. **F** also opens
-File Manager. Click an entry to select it; double-click to open. Click **View**
+File Manager. Drag a title bar to move File Manager, Calculator or picture
+preview. Drag the bottom-right square to resize File Manager or picture preview;
+Calculator's keypad is fixed-size. On the keyboard, position the pointer,
+hold **Space**, use the arrows, then release **Space** to place the outline.
+Click an entry to select it; double-click to open. Click **View**
 in the title bar or press **V** to switch
 between icon and list views. Open **PICS** and double-click a picture such as
 `1984.PIC` (four pens) or `46416.PIC` (sixteen pens). The Agon picture preview
@@ -276,13 +282,27 @@ to the same directory. Double-click **..** to go up; **Esc** or the window's
 **X** closes File Manager.
 On the desktop **C** is a Calculator shortcut, **W** toggles the wallpaper,
 and **Esc** returns to MOS.
+Click **System** at the top left for **Settings**, **Clock**, or **Run saver**.
+The menu is also available over File Manager and its guests. Click the
+top-right time or desktop Clock icon to open the analog face. Both clocks
+read the MOS RTC; if it is unavailable the bar shows `--:--`.
+Desktop shortcuts are **S** (Settings), **T** (Clock) and **V** (run saver).
+In Settings, click a value to cycle it. **Preview** runs the edited saver;
+**Cancel** discards edits. **Save** writes just `/GBENCH/AGON.CFG`. A read-only
+card still boots and can preview savers, but cannot save preferences.
+The defaults are Squares after two idle minutes and no seconds hand. Squares
+and Blank are built into this port; it cannot load CPC/MSX/PCW `.SAV` files.
+Choose an Off timeout to disable automatic activation. A key, click, or pointer movement
+wakes the saver without passing the wake action to the app underneath.
+Both savers check that the VDP can restore the display before painting over
+it. If it cannot, the current desktop and windows stay visible.
 Try `dir` or launch it a second time. No changes to the emulator's normal SD
 card or startup scripts are needed.
 
 `make agon` stages `QA/AGON/CARD/GEOBENCH.BIN`, the sample `PICS/` directory,
 and `GBENCH/{FILEMGR.APP,DEFAULT.IST,CALC.APP,PICVIEW.APP}`. When updating
-the physical SD from the File Manager build, replace `GEOBENCH.BIN` and add
-`GBENCH/PICVIEW.APP` from the same card build. Calculator is byte-for-byte the
+a physical SD, copy that directory's contents together: the launcher checks
+for matching app versions. Calculator is byte-for-byte the
 shipped CPC binary, not a reimplementation. This target uses RASM and SDCC and is not
 part of the default CPC/MSX/PCW distribution build. The test baseline is
 Fab Agon Emulator 1.2.6 with its default Platform firmware; the graphics
@@ -300,15 +320,16 @@ Launching Calculator or a picture from File Manager temporarily saves the
 parent's 16 KiB page in RAM and restores it when the child closes.
 The read-only `PICVIEW.APP` is a file association, not the full Viewer port:
 it accepts GBPC v2 modes 1, 6 and 7 up to 512x512, maps their pens to the
-active Agon palette, and fits the image inside 240x144. It has no zoom or
+active Agon palette, and fits the image to the window (initially 240x144).
+Moving the preview reuses its bitmap; resizing refits the source. It has no zoom or
 editing controls. Opening other types of document is not supported yet.
 Its resident jump table at `0x8000` handles window registration, drawing with
 GEOBENCH's 6x8 font, keyboard input, pointer clicks and close. Closing the window restores
 the previous desktop from the cached VDP bitmap; quitting restores the MOS mode.
 File Manager uses 8.3 names. **B** on the desktop still opens the compact MOS
 browser for long-name-only files. Neither browser changes the MOS working
-directory. File writes, drag-and-drop, overlapping movable
-windows, and preemption are not implemented on Agon yet.
+directory. The compact browser is fixed in place. General file writes, dragging files
+between windows, independent app windows, and preemption are not implemented on Agon yet.
 
 For an automated check, `make test-agon` needs the Flatpak, Xvfb, xdotool,
 ImageMagick and Python with Pillow. It uses a private display and a temporary

@@ -54,10 +54,18 @@ start
                 ld bc,setup_end-screen_setup
                 call vdu
                 call upload_logo
+                ld hl,system_image   ; the splash upload has released #a000
+                ld de,AG_SYSTEM
+                ld bc,system_end-system_image
+                ldir
                 call input_init
                 xor a
                 ld (AG_FILEMODE),a
                 call AG_FILES+36     ; initialise the VDP icon cache
+                call AG_WM           ; start with no saved window backgrounds
+                call load_icons
+                call desktop_disk
+                call AG_SYSTEM       ; initialise preferences and draw the top bar
                 xor a
 toggle_logo     xor 1
                 ld (visible),a
@@ -65,7 +73,7 @@ toggle_logo     xor 1
                 ld hl,plot_logo
                 ld bc,plot_end-plot_logo
                 jr paint
-hide_logo       ld bc,#120c           ; x=72 px, y=12
+hide_logo       ld bc,#1220           ; x=72 px, y=32
                 ld de,#2cb0           ; 176 x 176
                 xor a
                 call GB_FILL          ; viewport CLS would deactivate the sprite
@@ -80,14 +88,27 @@ wait_key        call AG_WAIT_INPUT
                 ld a,(POLL_MY)
                 cp 16
                 jr c,wait_key
-                cp 24
+                cp 58
                 jr nc,wait_key
-                ld a,(POLL_MX)        ; desktop SD: label, x=8..31
+                ld a,(POLL_MX)        ; icon and caption share a hit area
+                cp 68
+                jr c,disk_hit
+                cp 76
+                jr nc,wait_key
+                ld a,'T'
+                jr accessory
+disk_hit
                 sub 2
-                cp 6
+                cp 8
                 jp c,open_manager
                 jr wait_key
 desktop_key     and #df
+                cp 'S'
+                jr z,accessory
+                cp 'T'
+                jr z,accessory
+                cp 'V'
+                jr z,accessory
                 cp 'F'
                 jp z,open_manager
                 cp 'B'
@@ -98,10 +119,13 @@ desktop_key     and #df
                 jr nz,wait_key
                 ld a,(visible)
                 jr toggle_logo
+accessory       call AG_SYSTEM+6
+                jp wait_key
 open_calc       call read_calc
                 jr nz,app_error
                 call GB_INIT          ; single-app dispatcher; returns after close
 restore_desktop
+                call desktop_disk
                 ld hl,status_line
                 ld bc,setup_end-status_line
                 call vdu
@@ -113,7 +137,7 @@ restore_desktop
                 jr paint
 app_error       ld hl,calc_error
                 ld bc,calc_error_end-calc_error
-                jr paint
+                jp paint
 open_files      xor a
 files_loop      push af
                 ld hl,files_setup
@@ -136,18 +160,40 @@ close_files     ld bc,#0810           ; browser rectangle, x in 4-pixel columns
                 xor a
                 call GB_FILL
                 jr restore_desktop
-open_manager    ld a,(icons_loaded)
+desktop_disk    ld a,(icons_loaded)
                 or a
-                jr nz,manager_load
+                jr z,disk_caption
+                ld a,13              ; portable .IST SD card slot
+                ld bc,#0210
+                call GB_ICON
+                ld a,1               ; portable analog clock slot
+                ld bc,#4410
+                call GB_ICON
+                ld hl,clock_text
+                ld de,#0100
+                ld bc,#4432
+                call GB_TEXT
+disk_caption    ld hl,disk_text
+                ld de,#0100
+                ld bc,#0432
+                jp GB_TEXT
+load_icons      ld a,(icons_loaded)
+                or a
+                ret nz
                 ld hl,ist_path
                 ld de,#2000
                 ld bc,IST_SIZE
                 ld ix,IST_CRC
                 call read_checked
-                jr nz,manager_error
+                ret nz
                 ld a,1
                 ld (icons_loaded),a
-manager_load    ld hl,manager_path
+                ret
+open_manager    call load_icons
+                ld a,(icons_loaded)
+                or a
+                jr z,manager_error
+                ld hl,manager_path
                 ld de,APP_BASE
                 ld bc,FM_SIZE
                 ld ix,FM_CRC
@@ -340,20 +386,21 @@ logo_header     db "GBPC",2,1
                 db 1,26,0,6
 error_text      db "GEOBENCH: missing or invalid /PICS/LOGO.PIC",13,10
 error_end
-screen_setup    db 22,13              ; 320x200, 16 colours
+disk_text       db "SD:",0
+clock_text      db "Clock",0
+screen_setup    db 22,9               ; 320x240, 16 colours, 4:3 VGA
                 db 23,1,0             ; hide text cursor
                 db 17,132,12          ; blue paper, CLS
                 db 17,135,17,0,31,0,0
                 db " GEOBENCH                    AgonLight2 "
-                db 31,1,2,"SD:"
 ; Leave the bottom-right character untouched: printing there scrolls the VDP.
-status_line     db 17,132,17,7,31,0,24," F: Files  C: Calc  W: Wall  Esc: MOS  "
+status_line     db 17,132,17,7,31,0,AG_STATUS_ROW," F: Files  C: Calc  W: Wall  Esc: MOS  "
 setup_end
-files_setup     db 31,0,24," Arrows: pointer  Space: click  Esc    "
+files_setup     db 31,0,AG_STATUS_ROW," Arrows: pointer  Space: click  Esc    "
 files_setup_end
-calc_error      db 31,0,24," CALC.APP missing or invalid; C: retry "
+calc_error      db 31,0,AG_STATUS_ROW," CALC.APP missing or invalid; C: retry "
 calc_error_end
-fm_error        db 31,0,24," Missing/invalid FILEMGR.APP or IST    "
+fm_error        db 31,0,AG_STATUS_ROW," Missing/invalid FILEMGR.APP or IST    "
 fm_error_end
 upload_start    db 23,0,#a0
                 dw BITMAP_ID
@@ -372,7 +419,7 @@ define_end
 plot_logo       db 23,27,#20
                 dw BITMAP_ID
                 db 23,27,3
-                dw (320-LOGO_W)/2,(200-LOGO_H)/2
+                dw (320-LOGO_W)/2,(AG_LINES-LOGO_H)/2
 plot_end
 cleanup         db 23,27,12,23,27,15,23,27,7,0,23,27,5
                 db 23,0,#a0
@@ -388,14 +435,20 @@ entry_sp        dw 0
 visible         db 0
 icons_loaded    db 0
                 include "input.asm"
+                assert $ <= AG_WM
+                defs AG_WM-$
+                incbin "../../build/agon/window.bin"
 runtime_image   incbin "../../build/agon/runtime.bin"
 runtime_end
 files_image     incbin "../../build/agon/files.bin"
 files_end
+system_image    incbin "../../build/agon/system.bin"
+system_end
 ; The bootstrap is live below the app-visible low-RAM contracts. The temporary
 ; runtime image is copied before those contracts or the PIC scratch are used.
                 assert runtime_image < #1000
-                assert files_end < APP_BASE
+                assert system_end < GB_KERNEL
+                assert AG_SYSTEM+system_end-system_image <= #d800
                 assert AG_FILES+files_end-files_image <= #a000
                 assert CALC_SIZE <= APP_LOAD_MAX
                 assert FM_SIZE <= APP_LOAD_MAX

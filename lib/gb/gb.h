@@ -23,7 +23,11 @@
 #define GB_XPIX  360
 #else
 #define GB_COLS  80
+#ifdef GB_AGON
+#define GB_LINES 240
+#else
 #define GB_LINES 200
+#endif
 #define GB_XPIX  320
 #endif
 #endif
@@ -564,7 +568,11 @@ void gb_wm_setpos(unsigned char x, unsigned char y);  /* move our hit rect (drag
  * which keeps the top-left fixed and pulls the bottom-right corner. After the drag,
  * call gb_wm_setsize so click-to-focus + the restack use the new size, then redraw.
  * Apps reflow content to win_w/win_h; fixed-layout apps (e.g. ICONED) skip it. */
+#ifdef GB_AGON
+#define GRIP_W 3          /* VDP frames use a full column on each side */
+#else
 #define GRIP_W 2          /* grip size: 2 bytes (8px) x 6px */
+#endif
 #define GRIP_H 6
 void gb_wm_setsize(unsigned char w, unsigned char h);
 void gb_draw_grip(unsigned char x, unsigned char y, unsigned char w, unsigned char h);

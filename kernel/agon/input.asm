@@ -108,8 +108,10 @@ mouse_button    pop bc               ; B = sampled physical button
                 xor a
                 ld (space_vk),a
                 jr input_again
-input_idle      halt                 ; MOS/VDP interrupts wake the Z80
-                jr input_again
+input_idle      halt                 ; pump the RTC and saver even inside a guest
+                xor a
+                call system_input
+                jp input_again
 input_keydown   ld a,d
                 or a
                 jr z,input_again
@@ -117,7 +119,7 @@ input_keydown   ld a,d
                 jr nz,input_arrows
                 ld a,(space_vk)
                 or a
-                jr nz,input_again    ; ignore typematic Space
+                jp nz,input_again    ; ignore typematic Space
                 ld a,e
                 ld (space_vk),a
 input_click     di
@@ -135,7 +137,24 @@ input_click     di
                 ld a,5               ; GB_CLICK | GB_FIRE
                 ld (POLL_FLAGS),a
                 ld a,' '
-input_return    db LIL
+input_return    call system_input
+                or a
+                jr nz,input_deliver
+                ld (POLL_FLAGS),a    ; do not leak an accessory click to the guest
+                jp input_again
+input_deliver
+                db LIL
+                pop ix
+                ret
+system_input    db LIL
+                ld l,(ix+0)
+                db LIL
+                ld h,(ix+1)
+                ld (AG_NOW),hl
+                db LIL
+                push ix
+                call AG_SYSTEM+3
+                db LIL
                 pop ix
                 ret
 
@@ -246,7 +265,10 @@ kp_axis         cp 2                 ; 0 or both directions: unchanged
 kp_add          add hl,bc
                 ret
 
-pointer_move    ld bc,319
+pointer_move    ld a,(AG_MOTION)
+                inc a
+                ld (AG_MOTION),a
+                ld bc,319
                 or a
                 sbc hl,bc
                 jr c,pointer_x_ok
@@ -257,9 +279,9 @@ pointer_x_ok    add hl,bc
                 or a
                 jr nz,pointer_y_max
                 ld a,e
-                cp 200
+                cp AG_LINES
                 jr c,pointer_y_ok
-pointer_y_max   ld e,199
+pointer_y_max   ld e,AG_LINES-1
 pointer_y_ok    ld d,0
                 ld (pointer_y),de
 pointer_plot    ld hl,(pointer_x)
@@ -275,23 +297,50 @@ pointer_plot    ld hl,(pointer_x)
                 ld bc,pointer_end-pointer_packet
                 jp vdu
 
-; The File Manager's scrollbar thumb owns input until the button comes up.
-; Use the same coordinates as the outer dispatcher; Space remains a click.
+; Window gestures and scrollbar thumbs own input until the button comes up.
+; Sample movement on release too, without redrawing a stationary pointer.
 input_held      db LIL
                 push ix
                 ld a,8
                 call mos
                 halt
                 call mouse_sample
+                ld b,a
+                ld a,(last_button)
+                or b
+                ld a,b
                 ld (last_button),a
-                or a
-                jr z,held_done
+                jr z,held_keyboard
                 ld a,c
                 or a
-                jr z,held_fire
+                jr z,held_button
+                ld bc,(last_x)
+                or a
+                sbc hl,bc
+                add hl,bc
+                jr nz,held_move
+                push hl
+                ld hl,(last_y)
+                or a
+                sbc hl,de
+                pop hl
+                jr z,held_button
+held_move
                 ld (last_x),hl
                 ld (last_y),de
                 call pointer_move
+held_button     ld a,(last_button)
+                or a
+                jr nz,held_fire
+held_keyboard   call keyboard_pointer
+                ld a,#1e
+                call mos
+                db LIL
+                bit 2,(ix+12)        ; Space in the held-key map
+                jr nz,held_fire
+                xor a
+                ld (space_vk),a
+                jr held_done
 held_fire       ld a,4
 held_done       db LIL
                 pop ix

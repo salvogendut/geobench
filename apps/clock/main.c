@@ -22,8 +22,13 @@
 #define MIN_H    96
 #define TITLE_H  14
 
+#ifdef GB_AGON
+/* The resident accessory has no CRT: c_draw reads its live window geometry. */
+static unsigned char win_x, win_y, win_w, win_h;
+#else
 static unsigned char win_x = DEF_X, win_y = DEF_Y;
 static unsigned char win_w = DEF_W, win_h = DEF_H;  /* live size (resizeable) */
+#endif
 static unsigned char show_sec;               /* 0 = H:M (minute refresh), 1 = +seconds */
 static unsigned char ph, pm, ps, pshow, have_prev;  /* previous h/m/s + show state */
 static unsigned char fs_px, fs_py, fs_pw, fs_ph;    /* geometry saved across Fullscreen (#142) */
@@ -80,7 +85,16 @@ static const signed char COS64[60] = {
  * glue cells - screen pixel coords straight through, no conversion (#287). */
 static volatile unsigned int fx0, fy0, fx1, fy1;
 static volatile unsigned char fpen;
-#if defined(GB_MSX2) || defined(GB_PCW)
+#if defined(GB_AGON)
+extern void sys_send(const void *, unsigned);
+static void line(int x0, int y0, int x1, int y1, unsigned char pen)
+{
+    static const unsigned char inks[] = {4,15,0,9};
+    unsigned char p[] = {18,0,inks[pen],25,4,x0,x0>>8,y0,0,
+                         25,5,x1,x1>>8,y1,0};
+    sys_send(p,sizeof(p));
+}
+#elif defined(GB_MSX2) || defined(GB_PCW)
 #ifdef GB_PCW                    /* PCW: k_line Bresenham from low-RAM cells (#331) */
 #define GLINE_BASE 0x0F10
 #else                            /* MSX: V9938 LINE from the page-3 glue cells */
@@ -234,6 +248,10 @@ static unsigned char changed(void)
     return show_sec ? (bin(gb_sec) != ps) : (bin(gb_min) != pm);
 }
 
+#ifdef GB_AGON
+void agon_clock_draw(unsigned char seconds) { show_sec = seconds; c_draw(); }
+void agon_clock_tick(void) { if (changed()) tick(); }
+#else
 /* --- Options menu + dialogs (gb_doc framework + shared form lifecycle) --------- */
 
 /* on_event: a top-bar title click -> the framework (View / Options) (#142). */
@@ -417,3 +435,4 @@ void main(void)
     gb_menu_add("Options", opt_items, 2, opt_action);
     gb_restore_parent();                         /* first paint: WM chrome + c_draw */
 }
+#endif

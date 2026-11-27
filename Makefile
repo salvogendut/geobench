@@ -5,6 +5,7 @@ all: cpc msx pcw
 
 # Opt-in Agon MOS bring-up; not a release target yet.
 AGON_CARD := QA/AGON/CARD
+AGON_RUN_CARD := build/agon-sd
 RASM ?= rasm
 .PHONY: agon run-agon test-agon
 AGON_CALC := QA/CPC/CARD/GBENCH/CALC.APP
@@ -14,9 +15,32 @@ AGON_PREVIEW := $(AGON_CARD)/GBENCH/PICVIEW.APP
 AGON_PICS := $(patsubst assets/pictures/%,$(AGON_CARD)/PICS/%,$(wildcard assets/pictures/*.PIC))
 agon: $(AGON_CARD)/GEOBENCH.BIN $(AGON_PICS) $(AGON_CARD)/GBENCH/CALC.APP $(AGON_FM) $(AGON_IST)
 
-$(AGON_CARD)/GEOBENCH.BIN: kernel/agon/boot.asm kernel/agon/input.asm kernel/agon/input.inc kernel/lowram.inc lib/gbapp.inc build/agon/runtime.bin build/agon/files.bin build/agon/calc.inc
+$(AGON_CARD)/GEOBENCH.BIN: kernel/agon/boot.asm kernel/agon/input.asm kernel/agon/input.inc kernel/lowram.inc lib/gbapp.inc build/agon/runtime.bin build/agon/files.bin build/agon/window.bin build/agon/system.bin build/agon/calc.inc
 	mkdir -p $(@D)
 	$(RASM) $< -ob $@
+
+# Same analog face and Squares animation as the other targets; MOS input,
+# persistence and VDP line drawing are Agon-specific.
+build/agon/system.bin: kernel/agon/system.c kernel/agon/saver_screen.c kernel/agon/system_entry.s apps/clock/main.c apps/saver/main.c lib/gb/gbwin.c lib/gb/gblib.s lib/gb/gb.h
+	mkdir -p $(@D)
+	sdasz80 -o $(@D)/system_entry.rel kernel/agon/system_entry.s
+	sdasz80 -o $(@D)/syslib.rel lib/gb/gblib.s
+	sdcc -mz80 --opt-code-size -DGB_AGON -Ilib/gb -c kernel/agon/system.c -o $(@D)/sys.rel
+	sdcc -mz80 --opt-code-size -c kernel/agon/saver_screen.c -o $(@D)/saver_screen.rel
+	sdcc -mz80 --opt-code-size -DGB_AGON -Ilib/gb -c apps/clock/main.c -o $(@D)/clock.rel
+	sdcc -mz80 --opt-code-size -DGB_AGON -Ilib/gb -c apps/saver/main.c -o $(@D)/squares.rel
+	sdcc -mz80 --opt-code-size -DGB_AGON -Ilib/gb -c lib/gb/gbwin.c -o $(@D)/syswin.rel
+	sdcc -mz80 --no-std-crt0 --code-loc 0xa000 --data-loc 0xd800 $(addprefix $(@D)/,system_entry.rel sys.rel saver_screen.rel clock.rel squares.rel syswin.rel syslib.rel) -o $(@D)/system.ihx
+	makebin -s 65536 -p $(@D)/system.ihx $(@D)/system.flat
+	tail -c +40961 $(@D)/system.flat > $@
+
+build/agon/window.bin: kernel/agon/window.c kernel/agon/window_entry.s lib/gb/gb.h
+	mkdir -p $(@D)
+	sdasz80 -o $(@D)/window_entry.rel kernel/agon/window_entry.s
+	sdcc -mz80 --opt-code-size -DGB_AGON -Ilib/gb -c $< -o $(@D)/window.rel
+	sdcc -mz80 --no-std-crt0 --code-loc 0x0900 --data-loc 0x1e00 $(@D)/window_entry.rel $(@D)/window.rel -o $(@D)/window.ihx
+	makebin -s 65536 -p $(@D)/window.ihx $(@D)/window.flat
+	tail -c +2305 $(@D)/window.flat > $@
 
 build/agon/runtime.bin: kernel/agon/runtime.asm kernel/agon/draw.asm kernel/agon/input.inc lib/gbapp.inc kernel/lowram.inc QA/CPC/CARD/GBENCH/DEFAULT.FNT
 	mkdir -p $(@D)
@@ -38,8 +62,8 @@ build/agon/calc.inc: $(AGON_CALC) $(AGON_FM) $(AGON_IST) $(AGON_PREVIEW) tools/a
 	mkdir -p $(@D)
 	python3 tools/agon_signatures.py $(AGON_CALC) $(AGON_FM) $(AGON_IST) $(AGON_PREVIEW) > $@
 
-$(AGON_PREVIEW): kernel/agon/picview/main.c Makefile tools/build_capp.sh tools/build_cache.sh tools/check_app_layout.py lib/gb/gb.h lib/gb/gblib.s lib/gb/crt0.s
-	APPDEFS=-DGB_AGON APP_CFLAGS=--fno-omit-frame-pointer GBWIN=0 bash tools/build_capp.sh kernel/agon/picview build/agon/PICVIEW.RAW
+$(AGON_PREVIEW): kernel/agon/picview/main.c Makefile tools/build_capp.sh tools/build_cache.sh tools/check_app_layout.py lib/gb/gb.h lib/gb/gblib.s lib/gb/gbwin.c lib/gb/crt0.s
+	APPDEFS=-DGB_AGON APP_CFLAGS=--fno-omit-frame-pointer GBWIN=1 bash tools/build_capp.sh kernel/agon/picview build/agon/PICVIEW.RAW
 	mkdir -p $(@D)
 	cp build/agon/PICVIEW.RAW $@
 
@@ -61,14 +85,26 @@ $(AGON_CARD)/PICS/%.PIC: assets/pictures/%.PIC
 	cp $< $@
 
 run-agon: agon
-	flatpak run --filesystem="$(abspath $(AGON_CARD)):ro" io.github.tomm.fab_agon_emulator --sdcard "$(abspath $(AGON_CARD))"
+	mkdir -p $(AGON_RUN_CARD)
+	cp -R $(AGON_CARD)/. $(AGON_RUN_CARD)/
+	flatpak run --filesystem="$(abspath $(AGON_RUN_CARD)):rw" io.github.tomm.fab_agon_emulator --sdcard "$(abspath $(AGON_RUN_CARD))"
 
 build/agon/test_glyphs: tools/test_agon_glyphs.c kernel/agon/icons.c
 	mkdir -p $(@D)
 	$(CC) -std=c99 -O2 $< -o $@
 
-test-agon: agon build/agon/test_glyphs
+build/agon/test_saver_screen: tools/test_agon_saver_screen.c kernel/agon/saver_screen.c
+	mkdir -p $(@D)
+	$(CC) -std=c99 -O2 $^ -o $@
+
+build/agon/test_window: tools/test_agon_window.c kernel/agon/window.c lib/gb/gb.h
+	mkdir -p $(@D)
+	$(CC) -std=c99 -O2 -Ilib/gb $< -o $@
+
+test-agon: agon build/agon/test_glyphs build/agon/test_saver_screen build/agon/test_window
 	build/agon/test_glyphs
+	build/agon/test_saver_screen
+	build/agon/test_window
 	xvfb-run -a -s "-screen 0 1024x768x24" python3 tools/test_agon_boot.py $(AGON_CARD) $(AGON_TEST_HOST)
 
 cpc:

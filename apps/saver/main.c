@@ -40,7 +40,11 @@ static unsigned int rnd(void) { rng = (unsigned int)(rng * 25173u + 13849u); ret
 static void step(void)
 {
     unsigned char w   = (unsigned char)(2 + rr(9));            /* 2..10 bytes = 8..40 px wide */
+#ifdef GB_AGON
+    unsigned char h   = w * 4;
+#else
     unsigned char h   = (unsigned char)((w * 10) / 3);         /* visually square height */
+#endif
     unsigned char x   = rr((unsigned char)(GB_COLS - w));       /* fits horizontally */
     unsigned char y   = rr((unsigned char)(GB_LINES - h));      /* fits vertically */
     unsigned char pen = (unsigned char)(1 + rr(3));            /* pens 1..3 (not the bg) */
@@ -54,6 +58,10 @@ static void ss_paint(void)
     tick = 0;
 }
 
+#ifdef GB_AGON
+void agon_squares_start(unsigned int seed) { rng = seed; ss_paint(); }
+void agon_squares_tick(void) { step(); }
+#else
 static void ss_frame(void)
 {
     unsigned char f = gb_flags();
@@ -104,3 +112,4 @@ void main(void)
     ss_paint();                     /* clear now (don't wait for the first repaint) */
     gb_wm_add(&sswin);              /* register the window, return to the opener */
 }
+#endif

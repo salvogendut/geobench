@@ -9,3 +9,9 @@ AG_ICON_ARGS  equ #17f0              ; slot, x (byte columns), y, half
 AG_CLICK_TIME equ #17f4              ; MOS centiseconds at the primary press
 AG_TEXT_ARGS  equ #17f8              ; y, x (columns), paper, ink, right limit (columns)
 AG_DOC_PATH   equ #17fd              ; word: selected absolute MOS path for preview
+AG_WM         equ #900               ; resident window placement / save-under services
+AG_LINES      equ 240
+AG_SYSTEM     equ #a000             ; System menu, clock and saver services
+AG_NOW        equ #17e8             ; low word of the MOS centisecond counter
+AG_MOTION     equ #17ea             ; pointer activity serial, including fine nudges
+AG_STATUS_ROW  equ AG_LINES/8-1

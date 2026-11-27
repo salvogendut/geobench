@@ -82,46 +82,24 @@ draw_title
 await_input     call AG_WAIT_INPUT
                 cp ' '
                 jr nz,guest_key
-                ld a,(MW_RECT)
-                ld b,a
-                ld a,(POLL_MX)
-                sub b
-                jr c,event_loop
-                ld b,a
-                ld a,(MW_RECT+2)
-                cp b
-                jr c,event_loop
+                call AG_WM+6
+                or a
                 jr z,event_loop
-                sub b
-                ld e,a               ; distance from right edge in columns
-                ld a,(MW_RECT+1)
-                ld b,a
-                ld a,(POLL_MY)
-                sub b
-                jr c,event_loop
-                cp 14
-                jr nc,guest_client
-                ld a,e
-                cp 4
-                jr c,guest_close
-                cp 5
-                jp c,event_loop
-                cp 12
-                jp nc,event_loop
-                ld a,(AG_FILEMODE)
                 cp 1
-                jp nz,event_loop
+                jr z,guest_client
+                cp 2
+                jr z,guest_close
+                cp 3
+                jr z,guest_view
+                call request_draw
+                jr event_loop
+guest_view
                 ld a,'v'
                 jr guest_key
 guest_close
                 ld a,GB_MSG_CLOSE
                 jr send_msg
-guest_client    ld b,a
-                ld a,(MW_RECT+3)
-                cp b
-                jp c,event_loop
-                jp z,event_loop
-                ld a,GB_MSG_CLICK
+guest_client    ld a,GB_MSG_CLICK
                 jr send_msg
 guest_key
                 cp 27
@@ -131,17 +109,16 @@ guest_key
                 ld a,GB_MSG_CLOSE
 send_msg        call dispatch
                 jp event_loop
-finished        ld bc,(MW_RECT)
-                ld de,(MW_RECT+2)
-                call unpack_rect
-                xor a
-                jp draw_fill
+finished        jp AG_WM+9
 
 ; The descriptor is in the guest page. Its proc handles DRAW/FRAME/CLOSE
 ; after the app's entry has returned, exactly as on the established targets.
 register_window ld de,MW_RECT
                 ld bc,4
                 ldir
+                push hl
+                call AG_WM+3
+                pop hl
                 inc hl                ; min_w, min_h
                 inc hl
                 ld e,(hl)
@@ -304,10 +281,7 @@ enter_child     ld (child_mode),a
                 ld (AG_DOC_PATH),de
                 push ix
                 push iy
-                ld hl,APP_BASE
-                ld de,#a000
-                ld bc,#4000
-                ldir
+                call save_parent
                 ld hl,(MW_RECT)
                 push hl
                 ld hl,(MW_RECT+2)
@@ -339,10 +313,9 @@ child_done      pop af
                 ld (MW_RECT+2),hl
                 pop hl
                 ld (MW_RECT),hl
-                ld hl,#a000
-                ld de,APP_BASE
-                ld bc,#4000
-                ldir
+                push af               ; preserve the checked loader's Z result
+                call restore_parent
+                pop af
                 pop iy
                 pop ix
                 ld a,1
@@ -360,7 +333,7 @@ guest_footer    ld a,(AG_FILEMODE)
                 ld hl,fm_setup
                 jr footer
 unsupported     ld hl,no_handler
-footer          ld bc,42             ; TAB(0,24) + 39 printable columns
+footer          ld bc,42             ; TAB + 39 printable columns
                 call send
                 ld bc,0
                 xor a
@@ -371,11 +344,11 @@ send            db #49                ; RST.LIS 18: Z80 caller -> MOS block outp
                 ret
 close_label     db "X",0
 view_label      db "View",0
-app_setup       db 31,0,24," Calculator   Space: click  Esc: close "
+app_setup       db 31,0,AG_STATUS_ROW," Calculator   Space: click  Esc: close "
 app_setup_end
-fm_setup        db 31,0,24," File Manager  V: view  Space: click   "
-pic_setup       db 31,0,24," Picture preview            Esc: close "
-no_handler      db 31,0,24," Cannot open file on this Agon build   "
+fm_setup        db 31,0,AG_STATUS_ROW," File Manager  V: view  Space: click   "
+pic_setup       db 31,0,AG_STATUS_ROW," Picture preview            Esc: close "
+no_handler      db 31,0,AG_STATUS_ROW," Cannot open file on this Agon build   "
                 assert fm_setup+42 == pic_setup
                 assert pic_setup+42 == no_handler
                 assert no_handler+42 == $
@@ -385,4 +358,24 @@ need_draw       db 0
 wnd_proc        dw 0
 wnd_title       dw 0
 child_mode      db 0
+; Use the next 64 KiB of Agon user RAM for the suspended guest. Both effective
+; addresses are based on MOS's current MBASE, not a hardcoded load address.
+save_parent     db #ed,#6e            ; LD A,MB
+                ld (copy_from),a
+                inc a
+                jr copy_to_bank
+restore_parent  db #ed,#6e
+                ld (copy_to),a
+                inc a
+                ld (copy_from),a
+                jr copy_guest
+copy_to_bank    ld (copy_to),a
+copy_guest      db #5b,#21            ; LD.LIL HL,bank:APP_BASE
+                dw APP_BASE
+copy_from       db 0
+                db #5b,#11            ; LD.LIL DE,bank:APP_BASE
+                dw APP_BASE
+copy_to         db 0
+                db #5b,#01,0,#40,0,#5b,#ed,#b0  ; LD.LIL BC,#4000 / LDIR.LIL
+                ret
                 include "draw.asm"

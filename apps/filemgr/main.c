@@ -29,7 +29,11 @@
 #endif
 #define CASCADE_X 4
 #define CASCADE_Y 4
+#ifdef GB_AGON
+#define MIN_W    32            /* reserve room for the View title control */
+#else
 #define MIN_W    24            /* min size keeps the title + a couple of rows usable */
+#endif
 #define MIN_H    62
 #define TITLE_H  14
 #define DCLICK   75           /* double-click window, frames (gamepad-friendly, #153) */
@@ -988,9 +992,7 @@ static void draw_body(void)
     draw_scrollbar();
     if (view == V_ICONS) draw_icons_view();
     else                 draw_list_view();
-#ifndef GB_AGON
     gb_draw_grip(win_x, win_y, win_w, win_h);   /* resize grip, bottom-right (#81) */
-#endif
 }
 
 /* draw: interactive content redraw (manages the cursor) - the scroll/select paths use it
@@ -1108,6 +1110,9 @@ static void sync_rect(void)
 static void fm_draw(void)
 {
     sync_rect();
+#ifdef GB_AGON
+    clamp_top();
+#endif
     draw_body();
 }
 
