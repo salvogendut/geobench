@@ -12,6 +12,9 @@
  *   - its per-frame handler animates, and closes the moment it sees ANY input
  *     (a typed key, a click/fire/ESC, or a pointer move), handing back to the desktop. */
 #include "gb.h"
+#ifdef GB_AGON
+#include "agon_display.h"
+#endif
 
 /* WM_FS (#130A): the app-side full-screen flag the desktop's bar_draw reads each
  * frame. 1 = a borderless window owns lines 0-7, so the bar suppresses itself. */
@@ -48,6 +51,18 @@ static void step(void)
     unsigned char x   = rr((unsigned char)(GB_COLS - w));       /* fits horizontally */
     unsigned char y   = rr((unsigned char)(GB_LINES - h));      /* fits vertically */
     unsigned char pen = (unsigned char)(1 + rr(3));            /* pens 1..3 (not the bg) */
+#ifdef GB_AGON
+    if (ag_vga) {
+        if (tick & 1) x+=GB_COLS;
+        if (tick & 2) ag_ybase=240;
+        gb_fill(x,y,w,h,pen); ag_ybase=0;
+        if (++tick==CLEAR_EVERY) {
+            gb_fill(0,0,160,240,0); ag_ybase=240;
+            gb_fill(0,0,160,240,0); ag_ybase=0; tick=0;
+        }
+        return;
+    }
+#endif
     gb_fill(x, y, w, h, pen);
     if (++tick >= CLEAR_EVERY) { tick = 0; gb_fill(0, 0, GB_COLS, GB_LINES, 0); }
 }

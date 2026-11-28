@@ -16,4 +16,9 @@ AG_TEXT_FOCUS equ AG_SYSTEM+51
 AG_PROBE      equ #3b20             ; resident worker and input FIFO, before #3e00 clipboard
 AG_NOW        equ #17e8             ; low word of the MOS centisecond counter
 AG_MOTION     equ #17ea             ; pointer activity serial, including fine nudges
-AG_STATUS_ROW  equ AG_LINES/8-1
+AG_VGA        equ #17eb
+AG_WANT_VGA   equ #17e3             ; saved choice; applied only at the bare desktop
+AG_HHI        equ #17e7
+AG_YBASE      equ #17ec
+AG_MOUSE_Y    equ #17ed             ; physical sprite Y, independent of the guest ABI
+AG_STATUS_ROW equ 29                ; runtime substitutes row 59 in VGA mode

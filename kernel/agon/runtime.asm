@@ -62,16 +62,7 @@ PREEMPTIVE      equ 0
 paint_guest     ld a,(AG_FILEMODE)
                 or a
                 jr z,chrome_done
-                ld bc,(MW_RECT)
-                ld de,(MW_RECT+2)
-                call unpack_rect
-                xor a
-                call draw_fill
-                ld bc,(MW_RECT)
-                ld de,(MW_RECT+2)
-                call unpack_rect
-                ld a,2
-                call draw_frame
+                call AG_WM+15
 chrome_done     jp window_title
 
 ; Little-endian rectangle in memory: x,y,w,h -> B,C,D,E.
@@ -247,7 +238,17 @@ guest_footer    ld a,(AG_FILEMODE)
                 ld hl,fm_setup
                 jr footer
 unsupported     ld hl,no_handler
-footer          ld bc,42             ; TAB + 39 printable columns
+footer          push hl
+                inc hl
+                inc hl
+                ld a,(AG_VGA)
+                or a
+                ld a,29
+                jr z,footer_row
+                ld a,59
+footer_row      ld (hl),a
+                pop hl
+                ld bc,42             ; TAB + 39 printable columns
                 call send
                 ld bc,0
                 xor a

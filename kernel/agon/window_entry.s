@@ -5,6 +5,9 @@
         jp _win_open
         jp _win_click
         jp _win_close
+        .globl _win_fill16, _win_backdrop
+        jp _win_fill16
+        jp _win_backdrop
 _win_send::
         ld b,d
         ld c,e

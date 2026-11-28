@@ -156,8 +156,8 @@ def smoke(card, host):
                 finally:
                     run("xdotool", "keyup", "Shift_L")
 
-            def launch():
-                run("xdotool", "type", "--delay", "75", "geobench")
+            def launch(command="geobench"):
+                run("xdotool", "type", "--delay", "75", command)
                 key("Return")
 
             def wait_for(matches, message, timeout=8):
@@ -218,7 +218,9 @@ def smoke(card, host):
                 time.sleep(.15)
                 key("space")
 
-            def drag(horizontal, vertical):
+            def drag(horizontal, vertical, text_entry=False):
+                if text_entry:
+                    run("xdotool", "keydown", "Shift_L")
                 run("xdotool", "keydown", "space")
                 time.sleep(.15)
                 try:
@@ -228,6 +230,8 @@ def smoke(card, host):
                             move_keys(positive if delta > 0 else negative, abs(delta))
                 finally:
                     run("xdotool", "keyup", "space")
+                    if text_entry:
+                        run("xdotool", "keyup", "Shift_L")
 
             def icon(slot, x, y, half=False):
                 import struct
@@ -264,6 +268,146 @@ def smoke(card, host):
                 raise AssertionError(f"could not select {name!r}")
 
             time.sleep(3)  # MOS and the VDP boot independently
+            if os.environ.get("AGON_RESOLUTION_ONLY"):
+                config=sd/"GBENCH/AGON.CFG"
+                def native(s):
+                    return s.resize((640,480),Image.Resampling.NEAREST)
+                def vga_word(x,y,text,selected=False):
+                    return wait_for(lambda s:label_matches(native(s).crop((x,y,x+320,y+240)),
+                                    font,0,0,text,selected),f"missing VGA {text!r}")
+                def wide_desktop():
+                    wait_for(lambda s:wallpaper_matches(native(s).crop((160,120,480,360)),pic),
+                             "saved VGA mode did not display the centered wallpaper")
+                    vga_word(296,0,"GEOBENCH")
+                # Old records, even with non-default preferences, boot normally.
+                config.write_bytes(b"GBA1\x01\x00\x01\xa5")
+                launch(); wait_wallpaper(); key("s"); label(156,111,"320x240")
+                label(156,57,"Blank"); label(156,93,"On")
+                move_keys("Right",26); move_keys("Down",12); key("space")
+                label(156,111,"640x480")
+                key("Escape")
+                wait_for(lambda s:label_matches(s,font,136,0,"GEOBENCH") and
+                         not label_matches(s,font,64,40,"Settings",True),
+                         "Cancel did not restore the normal desktop")
+                assert config.read_bytes()==b"GBA1\x01\x00\x01\xa5"
+                key("s"); label(156,111,"320x240"); key("space"); key("Return")
+                wide_desktop()
+                assert config.read_bytes()==b"GBA1\x01\x00\x03\xa7"
+                key("Escape"); time.sleep(.7); launch(); wide_desktop()
+                key("f"); vga_word(36,19,"SD:",True)
+                move_keys("Left",1); move_keys("Up",2); key("space")
+                vga_word(8,10,"Settings"); key("s"); vga_word(156,111,"640x480")
+                move_keys("Right",27); move_keys("Down",14); key("space")
+                vga_word(68,145,"Applies when apps close")
+                key("Return"); vga_word(36,19,"SD:",True)
+                assert config.read_bytes()==b"GBA1\x01\x00\x01\xa5"
+                key("Escape"); wait_wallpaper()
+                key("Escape"); time.sleep(.7); launch(); wait_wallpaper(); key("Escape")
+                print("Agon resolution: legacy settings, Cancel, live 320->640, relaunch and deferred 640->320 OK")
+                return
+            if os.environ.get("AGON_VGA_ONLY"):
+                launch("gbvga")
+                def region(s,x,y):
+                    return s.resize((640,480),Image.Resampling.NEAREST).crop((x,y,x+320,y+240))
+                def word(x,y,text,selected=False,blue=False):
+                    return wait_for(lambda s:label_matches(region(s,x,y),font,0,0,text,selected,blue),
+                                    f"missing VGA {text} at ({x},{y})")
+                wait_for(lambda s:wallpaper_matches(region(s,160,120),pic),"VGA wallpaper not centered")
+                word(4,0,"System"); word(592,50,"Clock",blue=True)
+                key("f"); word(36,19,"SD:",True)
+                def grip_from_origin():
+                    move_keys("Right",35); move_keys("Down",22)
+                    for _ in range(3):
+                        run("xdotool","keydown","Down","sleep",".025","keyup","Down")
+                move_keys("Left",4); move_keys("Up",4)
+                grip_from_origin(); drag(39,31)
+                word(588,19,"X",True)
+                word(48,64,"GBENCH",blue=True)
+                drag(-39,-31); word(276,19,"X",True)
+                move_keys("Left",33); move_keys("Up",22)
+                move_keys("Right",6); move_keys("Down",3)
+                drag(40,32)
+                word(356,275,"SD:",True)
+                word(368,320,"GBENCH",blue=True)
+                move_keys("Down",2); double_click()
+                word(356,275,"SD:/GBENCH",True)
+                shot=word(520,408,"AGON.CAT",blue=True)
+                if os.environ.get("AGON_CAPTURE_DIR"):
+                    folder=Path(os.environ["AGON_CAPTURE_DIR"]); folder.mkdir(parents=True,exist_ok=True)
+                    shot.save(folder/"agon-vga-files.png")
+                move_keys("Left",50); move_keys("Up",40)
+                key("space"); word(8,10,"Settings")
+                key("v")
+                wait_for(lambda s:not label_matches(region(s,0,0),font,4,0,"System"),
+                         "VGA saver did not start",20)
+                key("Escape"); word(356,275,"SD:/GBENCH",True)
+                # Open PICS/1984.PIC from this moved Files window. Its source
+                # is taller than the viewport, so there is a left scrollbar.
+                move_keys("Right",48); move_keys("Down",37); double_click()
+                word(356,275,"SD:",True)
+                move_keys("Right",10); double_click(); word(356,275,"SD:/PICS",True)
+                double_click(); word(40,20,"1984.PIC",True)
+                move_keys("Left",60); move_keys("Up",40)
+                grip_from_origin(); drag(39,31)
+                word(584,20,"X",True)
+                # Operate the enlarged window's + button below scanline 255.
+                raw=(sd/"PICS/1984.PIC").read_bytes()
+                colours=((0,0,170),(255,255,255),(0,0,0),(255,0,0))
+                def patch(left,top,scale,x,y,w,h):
+                    return bytes(c for j in range(y,y+h) for i in range(x,x+w)
+                                 for sx in [(i-left)//scale]
+                                 for b in [raw[14+80*((j-top)//scale)+sx//4]>>(3-sx%4)]
+                                 for c in colours[((b>>4)&1)|((b&1)<<1)])
+                original=patch(44,32,1,200,260,32,16)
+                wait_for(lambda s:region(s,200,260).crop((0,0,32,16)).tobytes()==original,
+                         "enlarged Viewer did not show additional 1:1 rows",35)
+                move_keys("Left",4); move_keys("Up",1); key("space")
+                expected_patch=patch(56,32,2,420,305,48,32)
+                shot=wait_for(lambda s:region(s,420,305).crop((0,0,48,32)).tobytes()==expected_patch,
+                              "enlarged Viewer bitmap or zoom button failed",35)
+                if os.environ.get("AGON_CAPTURE_DIR"):
+                    shot.save(folder/"agon-vga-viewer-enlarged.png")
+                key("minus")
+                move_keys("Right",4); move_keys("Down",1); drag(-39,-31)
+                word(272,20,"X",True)
+                move_keys("Left",36); move_keys("Up",24)
+                move_keys("Right",8); move_keys("Down",3); drag(40,32)
+                move_keys("Up",40)  # clear the pointer sprite from the title
+                word(360,276,"1984.PIC",True)
+                raw=(sd/"PICS/1984.PIC").read_bytes()
+                colours=((0,0,170),(255,255,255),(0,0,0),(255,0,0))
+                expected=bytes(c for y in range(120) for x in range(212)
+                               for v in [raw[14+80*y+x//4]>>(3-x%4)]
+                               for c in colours[((v>>4)&1)|((v&1)<<1)])
+                shot=wait_for(lambda s:region(s,376,288).crop((0,0,212,120)).tobytes()==expected,
+                              "VGA Viewer pixels wrapped or differ from the PIC")
+                if os.environ.get("AGON_CAPTURE_DIR"):
+                    shot.save(folder/"agon-vga-viewer.png")
+                key("Escape"); word(356,275,"SD:/PICS",True)
+                key("q"); word(40,20,"1984.PIC",True)
+                move_keys("Left",80); move_keys("Up",60)
+                grip_from_origin(); drag(39,31)
+                original=patch(156,98,1,450,300,16,24)
+                wait_for(lambda s:region(s,450,300).crop((0,0,16,24)).tobytes()==original,
+                         "large Quick Preview did not fit the original 320x264 bitmap",35)
+                key("Escape"); word(356,275,"SD:/PICS",True)
+                key("Escape")
+                wait_for(lambda s:wallpaper_matches(region(s,160,120),pic),"VGA window left damage")
+                # Only the disposable emulator card gets the wide/tall text fixture.
+                (sd/"AATEST.TXT").write_text("W"*60+"Wide\n"+"\n".join(
+                    f"Row {i:02d}" for i in range(1,36))+"\n")
+                key("f"); word(36,19,"SD:",True); word(200,64,"AATEST.TXT",blue=True)
+                move_keys("Left",80); move_keys("Up",60)
+                move_keys("Right",28); move_keys("Down",6); double_click()
+                word(12,17,"AATEST.TXT",True)
+                move_keys("Right",5); move_keys("Down",15); drag(39,31,text_entry=True)
+                word(376,30,"Wide",blue=True); word(16,350,"Row 32",blue=True)
+                key("Escape"); word(36,19,"SD:",True)
+                key("Escape"); wait_for(lambda s:wallpaper_matches(region(s,160,120),pic),"VGA Files did not close")
+                key("Escape"); time.sleep(.8); launch()
+                wait_wallpaper(); key("Escape")
+                print("Agon VGA: large Files, Notepad, Quick Preview, zoomed Viewer and lower-right windows, saver wake, restore and 320x240 relaunch OK")
+                return
             launch()
             desktop = wait_wallpaper()
             def pointer_at(s, x, y):
@@ -763,7 +907,7 @@ def smoke(card, host):
                 blocked = sd/"GBENCH/AGON.CFG"
                 blocked.mkdir()
                 key("Return")
-                label(68,108,"Cannot write AGON.CFG")
+                label(68,145,"Cannot write AGON.CFG")
                 blocked.rmdir()
                 key("Return")
                 wait_for(lambda s: not label_matches(s,font,64,40,"Settings",True) and

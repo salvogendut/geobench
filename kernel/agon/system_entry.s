@@ -1,12 +1,12 @@
         .module system_entry
-        .globl _sys_init, _sys_event, _sys_open, _sys_text_focus, _cfg_handle
+        .globl _sys_init, _sys_event, _sys_open, _sys_text_focus
         .globl _ag_load, _ag_handle, _ag_name, _ag_setname, _ag_doc_read, _ag_doc_save, _ag_dialog
         .globl _ws_run, _ws_register, _ws_damage, _ws_close, _ws_key, _ws_request_app, _ws_request_doc
         .area _CODE
         jp _sys_init
         jp _sys_event
         jp _sys_open
-        jp _saver_pixel         ; window snapshot fence; A = probe scanline
+        jp pixel_fence          ; compatibility fence, A = byte scanline
         jp _ag_load
         jp _ws_run
         jp _ws_register
@@ -34,6 +34,8 @@ _ag_worker_stop::
         .globl _ag_export_pic, _ag_validate_next
         jp _ag_export_pic
         jp _ag_validate_next
+        .globl _sys_preferences
+        jp _sys_preferences     ; a051: load preferences before entering graphics
 get_name:
         call _ag_name
         ex de,hl
@@ -150,28 +152,6 @@ _sys_send::
 _sys_rtc::
         ld a,#0x12
         jr mos
-_cfg_open::
-        ld c,#1
-        jr open
-_cfg_create::
-        ld c,#0x0a              ; FA_CREATE_ALWAYS | FA_WRITE
-open:   ld a,#0x0a
-        jr mos
-_cfg_read::
-        ld a,#0x1a
-        jr transfer
-_cfg_write::
-        ld a,#0x1b
-transfer:
-        .db 0x5b,0x11,8,0,0     ; MOS requires a 24-bit count
-        push af
-        ld a,(_cfg_handle)
-        ld c,a
-        pop af
-        jr mos
-_cfg_close::
-        ld c,a
-        ld a,#0x0b
 mos:    .db 0x49
         rst 0x08
         ret
@@ -184,8 +164,18 @@ _layer_close::
 
 ; Synchronous point query for MOS 2.x as well as 3.x. The tick deadline
 ; prevents a VDP with no response from trapping the desktop in the saver.
+pixel_fence:
+        ld l,a
+        ld h,#0
 _saver_pixel::
-        ld (pixel_y),a
+        ld (pixel_y),hl
+        ld hl,#319
+        ld a,(0x17eb)
+        or a
+        jr z,pixel_width
+        ld hl,#639
+pixel_width:
+        ld (pixel_x),hl
         .db 0x5b
         push ix
         ld a,#8
@@ -219,5 +209,6 @@ pixel_done:
         pop ix
         ret
 pixel_query:
-        .db 23,0,0x84,63,1
+        .db 23,0,0x84
+pixel_x: .dw 319
 pixel_y: .db 0,0

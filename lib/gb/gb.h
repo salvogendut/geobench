@@ -118,7 +118,12 @@ void gb_button(unsigned char x, unsigned char y, unsigned char w, unsigned char 
                const char *label, unsigned char flags);
 void gb_field(unsigned char x, unsigned char y, unsigned char w, unsigned char h,
               const char *text, unsigned char flags);
-void gb_vscroll(unsigned char x, unsigned char y, unsigned char w, unsigned char h,
+#ifdef GB_AGON
+typedef unsigned int gb_scan_t;
+#else
+typedef unsigned char gb_scan_t;
+#endif
+void gb_vscroll(unsigned char x, gb_scan_t y, unsigned char w, gb_scan_t h,
                 unsigned char pos, unsigned char total, unsigned char page,
                 unsigned char flags);
 unsigned char gb_widget_hit(unsigned char x, unsigned char y,
@@ -127,20 +132,20 @@ unsigned char gb_widget_hit(unsigned char x, unsigned char y,
 #define gb_button_hit(x, y, w, h, mx, my, flags) \
     ((unsigned char)(!((flags) & GB_WIDGET_DISABLED) && \
      gb_widget_hit((x), (y), (w), (h), (mx), (my))))
-unsigned char gb_vscroll_hit(unsigned char x, unsigned char y,
-                             unsigned char w, unsigned char h,
+unsigned char gb_vscroll_hit(unsigned char x, gb_scan_t y,
+                             unsigned char w, gb_scan_t h,
                              unsigned char pos, unsigned char total,
                              unsigned char page, unsigned char mx,
-                             unsigned char my, unsigned char flags);
-void gb_vscroll16(unsigned char x, unsigned char y,
+                             gb_scan_t my, unsigned char flags);
+void gb_vscroll16(unsigned char x, gb_scan_t y,
+                  unsigned char w, gb_scan_t h,
+                  unsigned int pos, unsigned int total, unsigned int page);
+void gb_hscroll16(unsigned char x, gb_scan_t y,
                   unsigned char w, unsigned char h,
                   unsigned int pos, unsigned int total, unsigned int page);
-void gb_hscroll16(unsigned char x, unsigned char y,
-                  unsigned char w, unsigned char h,
-                  unsigned int pos, unsigned int total, unsigned int page);
-unsigned int gb_vscroll16_value(unsigned char y, unsigned char h,
+unsigned int gb_vscroll16_value(gb_scan_t y, gb_scan_t h,
                                 unsigned int total, unsigned int page,
-                                unsigned char my);
+                                gb_scan_t my);
 unsigned int gb_hscroll16_value(unsigned char x, unsigned char w,
                                 unsigned int total, unsigned int page,
                                 unsigned char mx);

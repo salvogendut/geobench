@@ -34,6 +34,10 @@ start
                 push ix
                 db LIL
                 push iy
+                ld hl,gesture_image
+                ld de,#f240
+                ld bc,gesture_end-gesture_image
+                ldir
                 ld hl,runtime_image
                 ld de,GB_KERNEL
                 ld bc,runtime_end-runtime_image
@@ -42,19 +46,7 @@ start
                 ld de,AG_FILES
                 ld bc,files_end-files_image
                 ldir
-                call read_logo
-                jp nz,file_error
-
-                ld a,8                ; mos_sysvars
-                call mos
-                db LIL
-                ld a,(ix+#27)         ; sysvar_scrMode
-                ld (restore_mode),a
-                ld hl,screen_setup
-                ld bc,setup_end-screen_setup
-                call vdu
-                call upload_logo
-                ld hl,system_image   ; the splash upload has released #a000
+                ld hl,system_image
                 ld de,AG_SYSTEM
                 ld bc,system_end-system_image
                 ldir
@@ -62,29 +54,71 @@ start
                 ld de,AG_PROBE
                 ld bc,probe_end-probe_image
                 ldir
+                call read_logo        ; guest page is free after relocation
+                jp nz,file_error
+                ifdef AGON_VGA
+                ld a,1                ; compatibility launcher: default without AGON.CFG
+                else
+                xor a
+                endif
+                call AG_SYSTEM+81     ; load saved settings, including requested mode
+                ld a,8
+                call mos
+                db LIL
+                ld a,(ix+#27)
+                ld (restore_mode),a   ; restore original MOS mode even after several changes
+                jr enter_video
+change_video    call read_logo        ; no guest windows open; leave old display intact on failure
+                jr z,release_display
+                ld a,(AG_VGA)
+                ld (AG_WANT_VGA),a
+                ld hl,logo_error
+                ld bc,logo_error_end-logo_error
+                jp paint
+release_display call AG_FILES+33      ; release old glyphs and icons before resetting VDP
+enter_video     call configure_video
+                call upload_logo
+                ld hl,16
+                ld (pointer_x),hl
+                ld (pointer_y),hl
                 call input_init
                 xor a
                 ld (AG_FILEMODE),a
+                ld (WM_NWIN),a
+                ld (AG_YBASE),a
+                ld (AG_HHI),a
                 call AG_FILES+36     ; initialise the VDP icon cache
                 call AG_WM           ; start with no saved window backgrounds
                 call load_icons
                 call desktop_disk
                 call AG_SYSTEM       ; initialise preferences and draw the top bar
-                xor a
+                ld a,(visible)
+                or a
+                jr z,wait_key
+                jr show_logo
 toggle_logo     xor 1
                 ld (visible),a
                 jr z,hide_logo
-                ld hl,plot_logo
+show_logo       ld hl,plot_logo
                 ld bc,plot_end-plot_logo
                 jr paint
-hide_logo       ld bc,#1220           ; x=72 px, y=32
+hide_logo       ld hl,(plot_logo+8)
+                srl h
+                rr l
+                srl h
+                rr l
+                ld b,l
+                ld a,(plot_logo+10)
+                ld c,a
                 ld de,#2cb0           ; 176 x 176
                 xor a
                 call GB_FILL          ; viewport CLS would deactivate the sprite
                 jr wait_key
 paint
                 call vdu
-wait_key        call AG_WAIT_INPUT
+wait_key        call video_pending
+                jp nz,change_video
+                call AG_WAIT_INPUT
                 cp 27
                 jp z,leave
                 cp ' '
@@ -94,14 +128,16 @@ wait_key        call AG_WAIT_INPUT
                 jr c,wait_key
                 cp 58
                 jr nc,wait_key
+                ld a,(clock_col)
+                ld b,a
                 ld a,(POLL_MX)        ; icon and caption share a hit area
-                cp 68
+                sub b
                 jr c,disk_hit
-                cp 76
+                cp 8
                 jr nc,wait_key
                 ld a,'T'
                 jr accessory
-disk_hit
+disk_hit        ld a,(POLL_MX)
                 sub 2
                 cp 8
                 jp c,open_manager
@@ -122,23 +158,25 @@ desktop_key     and #df
                 cp 'W'
                 jr nz,wait_key
                 ld a,(visible)
-                jr toggle_logo
+                jp toggle_logo
 accessory       call AG_SYSTEM+6
                 jp wait_key
 open_calc       call read_calc
                 jr nz,app_error
                 call GB_INIT          ; single-app dispatcher; returns after close
 restore_desktop
+                call video_pending    ; all document windows have now closed
+                jp nz,change_video
                 call desktop_disk
                 ld hl,status_line
                 ld bc,setup_end-status_line
                 call vdu
                 ld a,(visible)
                 or a
-                jr z,wait_key
+                jp z,wait_key
                 ld hl,plot_logo
                 ld bc,plot_end-plot_logo
-                jr paint
+                jp paint
 app_error       ld hl,calc_error
                 ld bc,calc_error_end-calc_error
                 jp paint
@@ -170,12 +208,16 @@ desktop_disk    ld a,(icons_loaded)
                 ld a,13              ; portable .IST SD card slot
                 ld bc,#0210
                 call GB_ICON
+                ld a,(clock_col)
+                ld b,a
+                ld c,16
                 ld a,1               ; portable analog clock slot
-                ld bc,#4410
                 call GB_ICON
                 ld hl,clock_text
                 ld de,#0100
-                ld bc,#4432
+                ld a,(clock_col)
+                ld b,a
+                ld c,50
                 call GB_TEXT
 disk_caption    ld hl,disk_text
                 ld de,#0100
@@ -391,7 +433,7 @@ error_text      db "GEOBENCH: missing or invalid /PICS/LOGO.PIC",13,10
 error_end
 disk_text       db "SD:",0
 clock_text      db "Clock",0
-screen_setup    db 22,9               ; 320x240, 16 colours, 4:3 VGA
+screen_setup    db 22,9
                 db 23,1,0             ; hide text cursor
                 db 17,132,12          ; blue paper, CLS
                 db 17,135,17,0,31,0,0
@@ -422,7 +464,7 @@ define_end
 plot_logo       db 23,27,#20
                 dw BITMAP_ID
                 db 23,27,3
-                dw (320-LOGO_W)/2,(AG_LINES-LOGO_H)/2
+                dw 0,0               ; centred by configure_video
 plot_end
 cleanup         db 23,27,12,23,27,15,23,27,7,0,23,27,5
                 db 23,0,#a0
@@ -435,12 +477,13 @@ restore_mode    db 0
                 db 23,1,1             ; restore visible MOS prompt
 cleanup_end
 entry_sp        dw 0
-visible         db 0
+visible         db 1
 icons_loaded    db 0
                 include "input.asm"
                 assert $ <= AG_WM
                 defs AG_WM-$
                 incbin "../../build/agon/window.bin"
+                include "video.asm"
 runtime_image   incbin "../../build/agon/runtime.bin"
 runtime_end
 files_image     incbin "../../build/agon/files.bin"
@@ -454,15 +497,18 @@ probe_image
                 incbin "../../build/agon/worker.bin"
                 endif
 probe_end
+gesture_image   incbin "../../build/agon/gesture.bin"
+gesture_end
+                assert gesture_end < GB_KERNEL
                 assert probe_end < GB_KERNEL
 ; The bootstrap is live below the app-visible low-RAM contracts. The temporary
 ; runtime image is copied before those contracts or the PIC scratch are used.
                 assert runtime_image < #1000
                 assert system_end < GB_KERNEL
-                assert AG_SYSTEM+system_end-system_image <= #e480
+                assert AG_SYSTEM+system_end-system_image <= #e550
                 assert AG_FILES+files_end-files_image <= #a000
                 assert #2000+IST_SIZE <= #3500 ; document path and MOS FILINFO follow
-picture         equ #a000
+picture         equ #4000            ; used only before or between guest lifetimes
 row_buf         equ picture+PIC_SIZE+1
                 assert GB_KERNEL+runtime_end-runtime_image <= AG_FILES
-                assert row_buf+LOGO_W <= #e000
+                assert row_buf+LOGO_W <= GB_KERNEL

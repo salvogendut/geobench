@@ -1,6 +1,7 @@
 /* GB_ICON / GB_ICONHALF: convert each themed IST bitmap on first use.
  * Slot data at 2000h has already passed the loader's exact-size/CRC check. */
 #include <string.h>
+#include "../../lib/gb/agon_display.h"
 typedef unsigned char u8;
 extern void send_vdu(const void *p, unsigned len);
 #define IST ((const u8 *)0x2000)
@@ -23,6 +24,8 @@ void fm_text(const u8 *s, const u8 *font)
     u8 pair = ink*4 + paper, bank = 0x50 + pair;
     unsigned x = (unsigned)text_args.col*4, right = (unsigned)text_args.right*4;
     u8 plot[] = {23,27,0x20,0,bank,23,27,3,0,0,text_args.y,0};
+    unsigned y = AG_PHYS_Y(text_args.y);
+    plot[10]=y; plot[11]=y>>8;
     while (*s && x+6 <= right) {
         u8 ch = *s++ - 32, mask, *ready;
         if (ch >= 100) ch = '?' - 32;
@@ -83,7 +86,8 @@ void fm_icon(void)
         send_vdu(define, sizeof(define));
         cache.ready[half][slot] = 1;
     }
-    plot[8] = args[1]<<2; plot[9] = args[1]>>6; plot[10] = args[2];
+    { unsigned y=AG_PHYS_Y(args[2]);
+      plot[8] = args[1]<<2; plot[9] = args[1]>>6; plot[10] = y; plot[11]=y>>8; }
     send_vdu(plot, sizeof(plot));
 }
 

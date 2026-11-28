@@ -21,6 +21,15 @@
         jp _fm_document
         .globl _fm_selected
         jp _fm_selected
+        .globl _ag_stamp_y, _ag_text16, _ag_textbw16, _ag_frame16, _ag_grip16, _ag_pointer_line
+        jp _ag_stamp_y
+        jp _ag_text16
+        jp _ag_textbw16
+        jp _ag_frame16
+        jp _ag_grip16
+        jp _ag_pointer_line
+        .globl _ag_preferences, _cfg_handle
+        jp _ag_preferences
 _managed_path:: jp 0xa036
 _send_vdu::
         ld b,d
@@ -42,3 +51,27 @@ mos:
         ret
 _file_key::
         jp 0x0003               ; AG_WAIT_INPUT in the bootstrap
+_cfg_open::
+        ld c,#1
+        jr cfg_open
+_cfg_create::
+        ld c,#0x0a              ; FA_CREATE_ALWAYS | FA_WRITE
+cfg_open:
+        ld a,#0x0a
+        jr mos
+_cfg_read::
+        ld a,#0x1a
+        jr transfer
+_cfg_write::
+        ld a,#0x1b
+transfer:
+        .db 0x5b,0x11,8,0,0     ; MOS requires a 24-bit count
+        push af
+        ld a,(_cfg_handle)
+        ld c,a
+        pop af
+        jr mos
+_cfg_close::
+        ld c,a
+        ld a,#0x0b
+        jr mos

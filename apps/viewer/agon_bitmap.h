@@ -1,11 +1,13 @@
 /* The shared Viewer computes the viewport and resamples packed rows. Here
  * the focused guest streams those rows into a slot-owned VDP bitmap. */
+#include "agon_display.h"
 typedef unsigned char u8;
 static u8 handle;
 #include "agon_pic.h"
 #define VIEW_PATH (*(const char * volatile *)0x17fd)
-static u8 palette[16], pixels[GB_COLS*4], packed6[256];
-static u8 build_row,bmp_rows,bmp_zoom,ready;
+static u8 palette[16], pixels[640], packed6[256];
+static unsigned build_row,bmp_rows;
+static u8 bmp_zoom,ready;
 static unsigned bmp_w,bmp_x,bmp_y,first_row,cached_rows;
 static unsigned long offset;
 static u8 clear_b[]={23,0,0xa0,0,0x47,2};
@@ -93,10 +95,10 @@ static u8 *source_row(unsigned y)
 static void agon_plot(void)
 {
     unsigned x=view_x*4;
-    plot_b[8]=x; plot_b[9]=x>>8; plot_b[10]=view_y;
+    plot_b[8]=x; plot_b[9]=x>>8; plot_b[10]=AG_PHYS_Y(view_y); plot_b[11]=AG_PHYS_Y(view_y)>>8;
     send(plot_b,sizeof plot_b);
 }
-static void agon_view(u8 cols,u8 lines)
+static void agon_view(u8 cols,unsigned lines)
 {
     unsigned w=(unsigned)cols*4;
     if(tail_pixels && scroll_x+cols==display_w) w-=4-tail_pixels;
@@ -131,7 +133,7 @@ static void agon_tick(void)
         } while(build_row<bmp_rows && zoom>NORMAL && (build_row&((1<<(zoom-NORMAL))-1)));
     }
     if(build_row==bmp_rows) {
-        define_b[14]=bmp_w; define_b[15]=bmp_w>>8; define_b[16]=bmp_rows;
+        define_b[14]=bmp_w; define_b[15]=bmp_w>>8; define_b[16]=bmp_rows; define_b[17]=bmp_rows>>8;
         send(define_b,sizeof define_b); ready=1; agon_plot();
     }
 }

@@ -48,7 +48,8 @@ mouse_sample    di
                 and 1
                 ret
 
-input_wait      db LIL
+input_wait      call pointer_local
+                db LIL
                 push ix
                 ld a,8
                 call mos
@@ -300,21 +301,19 @@ kp_add          add hl,bc
 pointer_move    ld a,(AG_MOTION)
                 inc a
                 ld (AG_MOTION),a
-                ld bc,319
+                ld bc,(last_col)
                 or a
                 sbc hl,bc
                 jr c,pointer_x_ok
                 ld hl,0
 pointer_x_ok    add hl,bc
                 ld (pointer_x),hl
-                ld a,d
+                ld hl,(last_line)
                 or a
-                jr nz,pointer_y_max
-                ld a,e
-                cp AG_LINES
-                jr c,pointer_y_ok
-pointer_y_max   ld e,AG_LINES-1
-pointer_y_ok    ld d,0
+                sbc hl,de
+                jr nc,pointer_y_ok
+                ld de,(last_line)
+pointer_y_ok
                 ld (pointer_y),de
 pointer_plot    ld hl,(pointer_x)
                 srl h
@@ -323,15 +322,34 @@ pointer_plot    ld hl,(pointer_x)
                 rr l
                 ld a,l
                 ld (POLL_MX),a
-                ld a,(pointer_y)
-                ld (POLL_MY),a
+                ld hl,(pointer_y)
+                ld (AG_MOUSE_Y),hl
+                call pointer_local
                 ld hl,pointer_packet
                 ld bc,pointer_end-pointer_packet
                 jp vdu
 
+; Outside the active coordinate space, never wrap into a clickable byte row.
+pointer_local   ld hl,(pointer_y)
+                ld a,(AG_YBASE)
+                ld e,a
+                ld d,0
+                or a
+                sbc hl,de
+                ld a,0
+                jr c,local_done
+                ld a,h
+                or a
+                ld a,l
+                jr z,local_done
+                ld a,255
+local_done      ld (POLL_MY),a
+                ret
+
 ; Window gestures and scrollbar thumbs own input until the button comes up.
 ; Sample movement on release too, without redrawing a stationary pointer.
-input_held      db LIL
+input_held      call pointer_local
+                db LIL
                 push ix
                 ld a,8
                 call mos

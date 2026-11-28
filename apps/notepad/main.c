@@ -17,6 +17,9 @@
  * n_close. The modal popups (menu, Load, confirm) still poll themselves. Click our window
  * to focus it; the view scrolls to keep the caret visible. */
 #include "gb.h"
+#ifdef GB_AGON
+#include "agon_viewport.h"
+#endif
 
 #define NP_MAX    4096           /* editable text capacity - restored to 4096 (#142): the
                                     shared clipboard (gb_clip_*) replaced the local clip[512],
@@ -44,7 +47,9 @@
 #endif
 #define MAX_LINES ((win_h - TITLE_H - 15) / LINE_H)   /* visible text rows (runtime) */
 #define WRAP      ((win_w - SB_W - 4) * 2 / 3)        /* chars per wrapped line (runtime) */
-#ifdef GB_MSX2
+#ifdef GB_AGON
+#define MAXWRAP 106 /* 159 byte-columns, plus terminator */
+#elif defined(GB_MSX2)
 #define MAXWRAP   84           /* line[] cap = max WRAP on the 128-col MSX window */
 #elif defined(GB_PCW)
 #define MAXWRAP   58           /* line[] cap = max WRAP on the 90-col PCW window */
@@ -58,7 +63,7 @@
 #define TX_BG_W   (win_w - SB_W - 2)
 #define TX_COL    (win_x + SB_W + 2)
 #define TX_Y0     (win_y + TITLE_H + 2)   /* +2: a 2px gap so the title bar doesn't clip line 1 */
-#define TX_H      ((unsigned char)(MAX_LINES * LINE_H))
+#define TX_H      ((gb_scan_t)(MAX_LINES * LINE_H))
 
 #define K_ENTER   0x0D
 #define K_BS      0x08
@@ -69,12 +74,17 @@
 
 static unsigned char win_x = DEF_X;      /* live window position (draggable) */
 static unsigned char win_y = DEF_Y;
-static unsigned char win_w = DEF_W, win_h = DEF_H;   /* live size (resizeable, #81) */
+static unsigned char win_w = DEF_W;
+static gb_scan_t win_h = DEF_H;   /* live size (resizeable, #81) */
 static char buf[NP_BUF];
 #ifdef GBDOC_BOUNDED_IO
 /* Reuse the executable icon after entry. The document framework uses 0x4084+
  * for its bounded-I/O state, leaving these display buffers below it. */
+#ifdef GB_AGON
+static char line[MAXWRAP];  /* wide VGA rows cannot share the 84-byte icon scratch */
+#else
 #define line   ((char *)0x4010)
+#endif
 #define fbase  ((char *)0x4064)
 #define wtitle ((char *)0x4072)
 #else
@@ -225,16 +235,16 @@ static unsigned char count_lines(void)
 #ifdef GBDOC_BOUNDED_IO
 static void draw_scrollbar(void)
 {
-    unsigned char ty = TX_Y0 + SB_ARROW;
+    gb_scan_t ty = TX_Y0 + SB_ARROW;
     gb_fill(SB_X, TX_Y0, SB_W, TX_H, 1);
     gb_textbw((unsigned char)(SB_X + 1), TX_Y0, GLYPH_TRI_UP);
-    gb_textbw((unsigned char)(SB_X + 1), (unsigned char)(TX_Y0 + TX_H - SB_ARROW),
+    gb_textbw((unsigned char)(SB_X + 1), (gb_scan_t)(TX_Y0 + TX_H - SB_ARROW),
               GLYPH_TRI_DOWN);
     if (view_first) {
         if ((unsigned char)(view_first + MAX_LINES) > prev_total)
-            ty = (unsigned char)(TX_Y0 + TX_H - SB_ARROW - SB_THUMB);
+            ty = (gb_scan_t)(TX_Y0 + TX_H - SB_ARROW - SB_THUMB);
         else
-            ty = (unsigned char)(TX_Y0 + TX_H / 2 - SB_THUMB / 2);
+            ty = (gb_scan_t)(TX_Y0 + TX_H / 2 - SB_THUMB / 2);
     }
     gb_fill(SB_X, ty, SB_W, SB_THUMB, 3);
 }
@@ -316,6 +326,11 @@ static void draw(void)
 #endif
     scroll_to_caret();
     prev_total = count_lines();
+#ifdef GB_AGON
+    /* Keep the last page full when widening the wrap or adding visible rows. */
+    if (view_first && view_first + MAX_LINES > prev_total + 1u)
+        view_first = prev_total + 1u > MAX_LINES ? prev_total + 1u - MAX_LINES : 0;
+#endif
     gb_fill(TX_BG_X, TX_Y0, TX_BG_W, TX_H, 0);  /* clear text (#146) */
 #ifdef GBDOC_BOUNDED_IO
     draw_scrollbar();
@@ -471,6 +486,7 @@ static void paste_clip(void);
 /* np_fullscreen: View > Fullscreen - resize our window to cover the screen (below the
  * top bar) and back. Notepad is resizable (#81), so the text just reflows. Restoring
  * repaints the desktop we vacated. */
+#ifndef GB_AGON
 static void np_fullscreen(unsigned char on)
 {
     if (on) { gb_wm_setpos(0, 8); gb_wm_setsize(GB_COLS, GB_LINES - 8); }
@@ -478,6 +494,8 @@ static void np_fullscreen(unsigned char on)
     gb_wm_damage(0, 8, GB_COLS, GB_LINES - 8); /* repaint ONCE in on_frame, clipped to the toggle area;
                                             repainting here too double-paints (the flicker, #153) */
 }
+
+#endif
 
 static const gb_doc_t npdoc = {
     buf, NP_MAX, np_new, np_open, np_save, np_saved, copy_sel, paste_clip, select_all,
@@ -551,7 +569,7 @@ static unsigned char try_close(void)
    pointer when it actually sits over the text - no per-blink pointer flicker.) */
 static unsigned char cursor_over(void)
 {
-    unsigned char mx = gb_mx(), my = gb_my();
+    unsigned char mx = gb_mx(); gb_scan_t my = gb_my();
     return (unsigned char)(mx >= win_x && mx < win_x + win_w &&
                            my >= win_y && my < win_y + win_h);
 }
@@ -663,7 +681,7 @@ static unsigned char handle_arrows(void)
    any selection); a drag (fire held + the pointer moved) selects the dragged range,
    highlighted in reverse video. anchor = idx under the press, extent follows the
    pointer (wrap-aware idx_of). (#99) */
-static void text_press(unsigned char mx, unsigned char my)
+static void text_press(unsigned char mx, gb_scan_t my)
 {
     unsigned int anchor, ext, last;
     unsigned char moved = 0, r, fl;
@@ -673,7 +691,7 @@ static void text_press(unsigned char mx, unsigned char my)
     for (;;) {
         fl = gb_poll();
         if (!(fl & GB_FIRE)) break;
-        { unsigned char qx = gb_mx(), qy = gb_my();
+        { unsigned char qx = gb_mx(); gb_scan_t qy = gb_my();
           r = (qy < TX_Y0) ? view_first
                            : (unsigned char)(view_first + (qy - TX_Y0) / LINE_H);
           ext = idx_of(r, (qx > TX_COL) ? (unsigned char)(((qx - TX_COL) * 2) / 3) : 0); }
@@ -711,10 +729,11 @@ static void n_draw(void)
    WM; here only the resize grip and a text click matter. */
 static void n_click(void)
 {
-    unsigned char mx = gb_mx(), my = gb_my();
-    unsigned char vis, txbot;
+    unsigned char mx = gb_mx(); gb_scan_t my = gb_my();
+    unsigned char vis; gb_scan_t txbot;
     sync_rect();
     keycool = 4;                                 /* flush the click's buffered keys */
+#ifndef GB_AGON
     if (gb_in_grip(win_x, win_y, win_w, win_h, mx, my)) {  /* resize grip (#81) */
         if (gb_drag_resize(win_x, win_y, &win_w, &win_h, MIN_W, MIN_H)) {
             gb_wm_setsize(win_w, win_h);         /* commit size + damage clip */
@@ -722,6 +741,7 @@ static void n_click(void)
         }
         return;
     }
+#endif
 #ifdef GBDOC_BOUNDED_IO
     if (mx >= SB_X && mx < SB_X + SB_W && my >= TX_Y0 && my < TX_Y0 + TX_H) {
         unsigned char old = view_first, max = 0;
@@ -741,7 +761,7 @@ static void n_click(void)
     /* text area bottom, precomputed flat: the summed (win_y+TITLE_H)+(win_h-...) form
        SDCC miscompiles - cf. the FM CT_BOT fix (#81). TX_Y0 + a runtime value is safe. */
     vis = MAX_LINES;
-    txbot = (unsigned char)(TX_Y0 + vis * LINE_H);
+    txbot = (gb_scan_t)(TX_Y0 + vis * LINE_H);
     if (my >= TX_Y0 && my < txbot && mx >= TX_COL)
         text_press(mx, my);                      /* click = caret, drag = select (#99) */
 }
