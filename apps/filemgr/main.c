@@ -1172,6 +1172,11 @@ static void open_entry(const char *name)
     nsel = 0;
 #endif
     e = gb_entname();              /* the positioned entry's 11-byte 8.3 name */
+#ifdef GB_AGON
+    if (ext_is(e,'A','P','P')) gb_wm_open(e);
+    else if (ext_is(e,'T','X','T')) gb_wm_launch_as("NOTEPAD APP");
+    else if (ext_is(e,'P','I','C')) gb_wm_launch_as("VIEWER  APP");
+#else
     if (ext_is(e, 'A', 'P', 'P') || ext_is(e, 'S', 'A', 'V'))
         gb_wm_open(e);                          /* #234: run the app/screensaver image itself */
     else if (ext_is(e, 'I', 'S', 'T') || ext_is(e, 'S', 'P', 'R'))
@@ -1187,6 +1192,7 @@ static void open_entry(const char *name)
     else if (ext_is(e, 'B', 'I', 'N'))          /* #236: native binaries aren't runnable
                                                    from GEOBENCH (exec unimplemented) - say so */
         gb_alert("Binary programs cannot", "be run from GEOBENCH.");
+#endif
     else
         gb_alert("No application for", "this file type.");
 }
@@ -1436,23 +1442,28 @@ static void fm_frame(void)
     gb_set_drive(my_drive);              /* re-assert our drive each focused frame (#65) */
 #ifdef GB_AGON
     {
-        static const char *const actions[]={"New window","New folder","Rename","Copy","Paste"};
+        static const char *const actions[]={"New window","New folder","Rename","Copy","Paste","Quick preview"};
         unsigned char k=gb_getkey(),sel;
         if(k==252) {
             build_list(); nsel=dc_timer=0; clamp_top(); return;
         }
         k|=32;
         if(k=='m') {
-            sel=gb_popup(10,8,actions,5);
-            if(sel>=5) return;
-            k="onrcp"[sel];
+            sel=gb_popup(10,8,actions,6);
+            if(sel>=6) return;
+            k="onrcpq"[sel];
         }
         if(k=='v') fm_view(0);
-        else if(k=='n' || k=='r' || k=='c' || k=='p' || k=='o') {
-            if(k=='r' || k=='c') {
+        else if(k=='n' || k=='r' || k=='c' || k=='p' || k=='o' || k=='i' || k=='q') {
+            if(k=='r' || k=='c' || k=='i' || k=='q') {
                 if(nsel<=up_avail() || !seek_entry(NAME_AT(order[nsel-up_avail()-1]))) {
                     gb_alert("Select an entry first",""); return;
                 }
+            }
+            if(k=='i' || k=='q') {
+                if(!gb_isdir() && ext_is(gb_entname(),'P','I','C')) gb_wm_launch_as(k=='q'?"PICVIEW APP":"VIEWER  APP");
+                else gb_alert("Select a .PIC file","");
+                dc_timer=0; return;
             }
             ((void (*)(unsigned char))0xa039)(k);
             dc_timer=0; return;

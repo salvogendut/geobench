@@ -105,14 +105,14 @@ void ws_request_app(const char *name)
 void ws_request_doc(const char *name)
 {
     launch=ws_document(name);
-    want=!memcmp(name,"NOTEPAD APP",11) ? 3 : 2;
+    want=!memcmp(name,"NOTEPAD APP",11) ? 3 : !memcmp(name,"VIEWER  APP",11) ? 6 : 2;
 }
 
 static void open_requested(void)
 {
     u8 id, old=slot, kind, expected=want;
     const char *app=expected==5 ? "/GBENCH/FILEMGR.APP" : expected==3 ? "/GBENCH/NOTEPAD.APP" :
-                    expected==2 ? "/GBENCH/PICVIEW.APP" : launch;
+                    expected==2 ? "/GBENCH/PICVIEW.APP" : expected==6 ? "/GBENCH/VIEWER.APP" : launch;
     want=0;
     if (count>=MAX_GUESTS) { gb_textbw(1,232,"Close a window first (3 open)"); return; }
     if ((expected!=5 && !launch) || (expected==3 && !ag_text_ok(launch))) { ws_error(); return; }
@@ -197,7 +197,7 @@ void ws_run(void)
             if(mode==1 && y<8 && x>=10 && x<17) {
                 pending_key='m'; message(GB_MSG_FRAME); continue;
             }
-            if (y<8 && x>=10 && ((mode==3 && x<26) || (mode==5 && x<17))) {
+            if (y<8 && x>=10 && ((mode==3 && x<26) || ((mode==5 || mode==6) && x<17))) {
                 gb_msg.p0=x; message(GB_MSG_MENU); message(GB_MSG_FRAME); continue;
             }
             if (x<live.x || x>=live.x+live.w || y<live.y || y>=live.y+live.h) {

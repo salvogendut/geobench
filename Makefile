@@ -14,6 +14,7 @@ AGON_IST := $(AGON_CARD)/GBENCH/DEFAULT.IST
 AGON_PREVIEW := $(AGON_CARD)/GBENCH/PICVIEW.APP
 AGON_NOTE := $(AGON_CARD)/GBENCH/NOTEPAD.APP
 AGON_XAOS := $(AGON_CARD)/GBENCH/XAOS.APP
+AGON_VIEWER := $(AGON_CARD)/GBENCH/VIEWER.APP
 AGON_CAT := $(AGON_CARD)/GBENCH/AGON.CAT
 AGON_PICS := $(patsubst assets/pictures/%,$(AGON_CARD)/PICS/%,$(wildcard assets/pictures/*.PIC))
 agon: $(AGON_CARD)/GEOBENCH.BIN $(AGON_PICS) $(AGON_CAT) $(AGON_IST) $(AGON_CARD)/GBENCH/WELCOME.TXT
@@ -22,9 +23,9 @@ $(AGON_CARD)/GBENCH/WELCOME.TXT: assets/WELCOME.TXT
 	mkdir -p $(@D)
 	cp $< $@
 
-AGON_GUESTS := 0:$(AGON_CARD)/GBENCH/CALC.APP 1:$(AGON_FM) 2:$(AGON_PREVIEW) 3:$(AGON_NOTE) 5:$(AGON_XAOS)
+AGON_GUESTS := 0:$(AGON_CARD)/GBENCH/CALC.APP 1:$(AGON_FM) 2:$(AGON_PREVIEW) 3:$(AGON_NOTE) 5:$(AGON_XAOS) 6:$(AGON_VIEWER)
 $(AGON_FM) $(AGON_NOTE): lib/gb/gbagon.h
-$(AGON_CAT): tools/agon_catalog.py $(AGON_CARD)/GBENCH/CALC.APP $(AGON_FM) $(AGON_PREVIEW) $(AGON_NOTE) $(AGON_XAOS)
+$(AGON_CAT): tools/agon_catalog.py $(AGON_CARD)/GBENCH/CALC.APP $(AGON_FM) $(AGON_PREVIEW) $(AGON_NOTE) $(AGON_XAOS) $(AGON_VIEWER)
 	python3 $< $@ $(AGON_GUESTS)
 
 $(AGON_NOTE): apps/notepad/main.c apps/notepad/icon.asm Makefile tools/build_capp.sh tools/build_cache.sh lib/gb/gb.h lib/gb/gbdoc.c lib/gb/gbui_stub.c lib/gb/gblib.s lib/gb/gbwin.c
@@ -93,6 +94,12 @@ $(AGON_FM): apps/filemgr/main.c Makefile tools/build_capp.sh tools/build_cache.s
 	APPDEFS=-DGB_AGON APP_CFLAGS=--opt-code-size DATA_LOC=0x7900 DOCRO=1 SCROLL=1 bash tools/build_capp.sh apps/filemgr build/agon/FILEMGR.RAW
 	mkdir -p $(@D)
 	cp build/agon/FILEMGR.RAW $@
+
+$(AGON_PREVIEW) $(AGON_VIEWER): lib/gb/agon_pic.h
+$(AGON_VIEWER): apps/viewer/main.c apps/viewer/zoom.h apps/viewer/agon_bitmap.h apps/viewer/icon.asm Makefile tools/build_capp.sh tools/build_cache.sh tools/check_app_layout.py lib/gb/gb.h lib/gb/gbscroll16.c lib/gb/gbwin.c lib/gb/gbui_stub.c lib/gb/gblib.s lib/gb/crt0.s
+	APPDEFS=-DGB_AGON APP_ICON=apps/viewer/icon.asm APP_CFLAGS=--fno-omit-frame-pointer DATA_LOC=0x6800 SCROLL16=1 PICKER=1 bash tools/build_capp.sh apps/viewer build/agon/VIEWER.APP
+	mkdir -p $(@D)
+	cp build/agon/VIEWER.APP $@
 
 $(AGON_IST): QA/CPC/CARD/GBENCH/DEFAULT.IST
 	mkdir -p $(@D)

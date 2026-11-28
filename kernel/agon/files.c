@@ -160,7 +160,8 @@ char *fm_document(const char *handler)
 {
     char *p = 0;
     if (fs.opened && !fm_isdir() &&
-        ((!memcmp(handler,"VIEWER  APP",11) && !memcmp(fs.raw+8,"PIC",3)) ||
+        (((!memcmp(handler,"VIEWER  APP",11) || !memcmp(handler,"PICVIEW APP",11)) &&
+           !memcmp(fs.raw+8,"PIC",3)) ||
          (!memcmp(handler,"NOTEPAD APP",11) && !memcmp(fs.raw+8,"TXT",3)))) p=current_path();
     fm_end();
     return p;

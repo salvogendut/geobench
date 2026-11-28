@@ -26,7 +26,7 @@ static __at(0x1700) volatile u8 op;
 void ag_bar(void)
 {
     gb_fill(10,0,23,8,1);
-    if (mode==1 || mode==3 || mode==5) gb_textbw(10,0,"File");
+    if (mode==1 || mode==3 || mode==5 || mode==6) gb_textbw(10,0,"File");
     if (mode==3) gb_textbw(17,0,"Edit");
 }
 
@@ -321,6 +321,7 @@ static u8 picker(u8 save)
             if(idx==10) offset=0;
             if(idx==255) error="Cannot open path";
             if(idx==11) {
+                if(mode==6) { strcpy(ag_path(),pathbuf); ag_dismiss(); return 1; }
                 if(mode!=3 || ag_text_ok(pathbuf)) { picked=1; break; }
                 error="Unreadable or over 4 KiB";
             }

@@ -29,6 +29,6 @@ u8 ag_load(const char *path)
         for (bit=8;bit;--bit) crc=crc&0x8000 ? (crc<<1)^0x1021 : crc<<1;
     }
     for (p=catalog+6; p<catalog+n; p+=5)
-        if (p[0]<=5 && word(p+1)==bytes && word(p+3)==crc) return *p;
+        if (p[0]<=6 && word(p+1)==bytes && word(p+3)==crc) return *p;
     return 255;
 }

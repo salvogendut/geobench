@@ -136,7 +136,11 @@ if [ "$TASK_ROOT_FLAG" = "1" ] && [ ! -s "$TASK_RUNTIME_RAW" ]; then
 fi
 
 deps=("$0" "tools/build_cache.sh" "tools/check_app_layout.py" "$GB/crt0.s" "$GBLIB_SRC" "$GB/gb.h")
-case " $ALL_APPDEFS " in *" -DGB_AGON "*) deps+=("$GB/gbagon.h");; esac
+case " $ALL_APPDEFS " in
+    *" -DGB_AGON "*)
+        deps+=("$GB/gbagon.h")
+        if grep -Rqs '"agon_pic.h"' "$APP"; then deps+=("$GB/agon_pic.h"); fi ;;
+esac
 if [ -n "$APP_ICON" ]; then
     deps+=("tools/embed_app_icon.py" "$APP_ICON")
 fi

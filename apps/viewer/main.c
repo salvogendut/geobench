@@ -12,7 +12,15 @@
 #include "zoom.h"
 
 #define VIEW_MAX  2560    /* ten maximum-width Screen-7 rows per buffered read */
-#define TX_Y0     (unsigned char)(win_y + 12)
+#ifdef GB_AGON
+#define TITLE_PAD 15
+static const unsigned char windowed=0;
+#define WM_FS (&windowed)
+#else
+#define TITLE_PAD 12
+#define WM_FS     ((volatile unsigned char *)0x130A)
+#endif
+#define TX_Y0     (unsigned char)(win_y + TITLE_PAD)
 
 #define DEF_X     2
 #define DEF_Y     14
@@ -20,13 +28,12 @@
 #define DEF_H     180
 #define MIN_W     30
 #define MIN_H     72
-#define WM_FS     ((volatile unsigned char *)0x130A)   /* 1 = fullscreen (kernel sets it) */
 #define SB_W      3       /* scrollbar width, byte cols (#166) */
 #define HSB_H     7       /* horizontal scrollbar height, pixel lines */
 #define ZOOM_W    4       /* four byte columns = 16 logical pixels */
 #define ZOOM_H    16
 #define ZOOM_STEP (ZOOM_W + 1)
-#define BODY_PAD  (14 + ZOOM_H)
+#define BODY_PAD  (TITLE_PAD + 2 + ZOOM_H)
 #define ZOOM_X    ((unsigned char)(win_x + win_w - GRIP_W - 2 - ZOOM_STEP - ZOOM_W))
 #define ZOOM_Y    ((unsigned char)(win_y + win_h - 1 - ZOOM_H))
 
@@ -91,6 +98,9 @@ static unsigned char invalid_pic;                      /* malformed or unsupport
 #define MSX_SCRMOD    (*(volatile unsigned char *)0xFCAF)
 #endif
 
+#ifdef GB_AGON
+#include "agon_bitmap.h"
+#else
 static void select_banked_picture(void)
 {
     PIC_PAGE_K = banked;
@@ -263,6 +273,7 @@ static void size_to_pic(void)   /* size the window to the picture, clamped on sc
     if (w > GB_COLS - x) w = GB_COLS - x;
     gb_wm_setsize(w, h);
 }
+#endif
 
 /* Keep vertical positions in source rows: a tall picture at 4x need not
    fit a 16-bit display coordinate. Horizontal positions fit at all scales. */
@@ -332,6 +343,7 @@ static unsigned char native_pic_byte(unsigned char b)
 
 /* Scale only the visible portion. Read consecutive rows in batches, then
    convert each source row once, including when it is displayed four times. */
+#ifndef GB_AGON
 static void blit_buffered(unsigned char w, unsigned char rows)
 {
     unsigned int sy = scroll_y, i, batch, take, start = scroll_x, count = w;
@@ -407,19 +419,26 @@ static void blit_pic(unsigned char x, unsigned char y, unsigned char w,
     }
 }
 
+#endif
 static void draw_pic(void)
 {
     unsigned char rows, draw_w;
+#ifndef GB_AGON
     unsigned int src;
+#endif
     calc_view();
     if (!view_w || !view_h) return;
     draw_w = (display_w - scroll_x > view_w) ? view_w : (unsigned char)(display_w - scroll_x);
     rows = (unsigned char)display_height(pic_h - scroll_y, view_h);
+#ifdef GB_AGON
+    agon_view(draw_w, rows);
+#else
     if (streamed || zoom != NORMAL) blit_buffered(draw_w, rows);
     else {
         src = pic_off + scroll_y * pic_stride + (pic_mode == 7 ? scroll_x * 2 : scroll_x);
         blit_pic(view_x, view_y, draw_w, rows, src);
     }
+#endif
     if (view_vsb)                                      /* vertical scrollbar at the LEFT edge (#166) */
         gb_vscroll16((unsigned char)(win_x + 1), TX_Y0, SB_W, view_h,
                      scroll_y, pic_h, visible_src_h);
@@ -432,10 +451,24 @@ static void draw_pic(void)
 static void sb_drag(void)
 {
     unsigned int ny;
+#ifdef GB_AGON
+    unsigned int thumb=scroll_y;
+    unsigned char held;
+    do {
+        held=gb_poll() & GB_FIRE;
+        ny = gb_vscroll16_value(TX_Y0, view_h, pic_h, visible_src_h, gb_my());
+        if(held && ny!=thumb) {
+            thumb=ny; gb_vscroll16(win_x+1,TX_Y0,SB_W,view_h,ny,pic_h,visible_src_h);
+        }
+    } while (held);
+    if (ny != scroll_y) { scroll_y = ny; draw_pic(); }
+    else if(thumb!=ny) gb_vscroll16(win_x+1,TX_Y0,SB_W,view_h,ny,pic_h,visible_src_h);
+#else
     while (gb_poll() & GB_FIRE) {
         ny = gb_vscroll16_value(TX_Y0, view_h, pic_h, visible_src_h, gb_my());
         if (ny != scroll_y) { scroll_y = ny; gb_curhide(); draw_pic(); gb_curshow(); }
     }
+#endif
 }
 
 static void hsb_drag(void)
@@ -443,6 +476,19 @@ static void hsb_drag(void)
     unsigned int nx;
     calc_view();
     if (!view_hsb || !hbar_w || display_w <= view_w) return;
+#ifdef GB_AGON
+    unsigned int thumb=scroll_x;
+    unsigned char held;
+    do {
+        held=gb_poll() & GB_FIRE;
+        nx = gb_hscroll16_value(hbar_x, hbar_w, display_w, view_w, gb_mx());
+        if(held && nx!=thumb) {
+            thumb=nx; gb_hscroll16(hbar_x,hbar_y,hbar_w,HSB_H-1,nx,display_w,view_w);
+        }
+    } while (held);
+    if (nx != scroll_x) { scroll_x = nx; draw_pic(); }
+    else if(thumb!=nx) gb_hscroll16(hbar_x,hbar_y,hbar_w,HSB_H-1,nx,display_w,view_w);
+#else
     while (gb_poll() & GB_FIRE) {
         nx = gb_hscroll16_value(hbar_x, hbar_w, display_w, view_w, gb_mx());
         if (nx != scroll_x) {
@@ -450,6 +496,7 @@ static void hsb_drag(void)
             gb_curhide(); draw_pic(); gb_curshow();
         }
     }
+#endif
 }
 
 static void zoom_button(unsigned char x, const char *label)
@@ -481,6 +528,7 @@ static void v_draw(void)
     gb_draw_grip(win_x, win_y, win_w, win_h);   /* resize grip (#146) */
 }
 
+#ifndef GB_AGON
 static void v_fullscreen(unsigned char on);    /* defined below */
 
 /* --- fullscreen image cycling: Space / Right = next, Left = previous (#viewer) -------
@@ -615,9 +663,11 @@ static void fs_nav(unsigned char c)
     else if (lr_bits & 0x01) { cycle(-1); cyc_cool = 10; }   /* Left  -> previous */
 }
 
+#endif
 static void change_zoom(unsigned char increase)
 {
     if (increase ? zoom == QUAD : zoom == HALF) return;
+#ifndef GB_AGON
     if (!pic_pixels) {
         pic_pixels = (unsigned int)pic_wb * 4;
         if (pic_off == 14 && read_picture(6, 2)) {
@@ -625,6 +675,7 @@ static void change_zoom(unsigned char increase)
             if (w && w <= pic_pixels && pic_pixels - w < 4) pic_pixels = w;
         }
     }
+#endif
     if (increase) { ++zoom; scroll_x <<= 1; }
     else { --zoom; scroll_x >>= 1; }
     gb_curhide();
@@ -637,6 +688,7 @@ static void change_zoom(unsigned char increase)
 }
 
 /* Size the window on the first frame after File > Load; handle menus/keys. */
+#ifndef GB_AGON
 static void v_frame(void)
 {
     unsigned char menu, c = gb_getkey();
@@ -673,6 +725,7 @@ static void v_drag(void)
     }
 }
 
+#endif
 /* A content press can operate a zoom button, scrollbar, or the resize grip. */
 static void v_click(void)
 {
@@ -702,16 +755,46 @@ static void v_click(void)
             return;
         }
     }
+#ifndef GB_AGON
     if (gb_in_grip(win_x, win_y, w, h, gb_mx(), gb_my()))
         if (gb_drag_resize(win_x, win_y, &w, &h, MIN_W, MIN_H)) {
             gb_wm_setsize(w, h);
             gb_restore_parent();
         }
+#endif
 }
 
 /* View > Fullscreen (gb_doc) / the 'F' key: TRUE fullscreen. WM_FS (the shared low-RAM byte)
    tells the desktop to blank its top bar; we cover the WHOLE screen (so v_draw's blue fill
    paints over the WM's chrome) and centre the image. Off restores the exact prior window. */
+#ifdef GB_AGON
+static void v_proc(void)
+{
+    static const char *const menu[]={"Open","Close"};
+    static const char *const pics[]={"PIC",0};
+    char name[11];
+    unsigned char k;
+    switch(gb_msg.type) {
+    case GB_MSG_DRAW: v_draw(); break;
+    case GB_MSG_CLICK: v_click(); break;
+    case GB_MSG_FRAME:
+        k=gb_getkey();
+        if(have_pic() && (k=='+' || k=='=' || k=='-')) change_zoom(k!='-');
+        else agon_tick();
+        break;
+    case GB_MSG_MENU:
+        k=gb_popup(10,8,menu,2);
+        if(k==0 && gb_pickfile(name,pics)) {
+            agon_open(); gb_restore_parent();
+        }
+        if(k!=1) break;
+        /* fall through */
+    case GB_MSG_CLOSE: agon_close(); gb_wm_close(); break;
+    }
+}
+static const gb_mwin_t vmw={9,17,62,166,MIN_W,MIN_H,v_proc,vtitle};
+void main(void) { gb_wm_managed(&vmw); agon_open(); loaded=1; }
+#else
 static void v_fullscreen(unsigned char on)
 {
     static unsigned char px, py, pw, ph;
@@ -784,3 +867,4 @@ void main(void)
     gb_repaint_top();                /* FIRST paint: the new opaque z-top only. Lower windows are
                                         already valid and must not flash while the picture opens. */
 }
+#endif

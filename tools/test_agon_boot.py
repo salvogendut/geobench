@@ -284,6 +284,67 @@ def smoke(card, host):
                     return next((i+1 for i in range(6) if label_matches(
                         s,font,56,67+12*i,f"{i+1} {name}")),0)
                 key(str(row(wait_for(row,f"no picker row {name!r}"))))
+            def viewer():
+                from struct import pack
+                folder=sd/"AAA"; folder.mkdir()
+                def pen(x,y,mode):
+                    return (x+3*y+(x//17)^(y//13)) % (16 if mode==7 else 4)
+                def fixture(name,w,h,mode):
+                    raw=bytearray(b"GBPC"+bytes((2,mode))+pack("<HH",w,h)+bytes((1,26,0,6)))
+                    ppb=2 if mode==7 else 4
+                    for y in range(h):
+                        for x in range(0,w,ppb):
+                            b=0
+                            for i in range(ppb):
+                                p=pen(x+i,y,mode)
+                                if mode==1: b|=(p&1)<<(7-i)|(p>>1)<<(3-i)
+                                else: b=(b<<(8//ppb))|p
+                            raw.append(b)
+                    (folder/name).write_bytes(raw)
+                def check(name,w,h,mode,level,sx=0,sy=0):
+                    scale=2**(level-1)
+                    dh=min(133,int((h*scale)+.5))
+                    left=56 if h*scale>133 else 44
+                    dw=min(280-left,int(w*scale+.5))
+                    def matches(s):
+                        if not label_matches(s,font,40,20,name,True): return False
+                        crop=s.resize((320,240),Image.Resampling.NEAREST).crop((left,32,left+dw,32+dh))
+                        colors={0:(0,0,170),1:(255,255,255),2:(0,0,0),3:(255,0,0)}
+                        data=crop.load()
+                        for i in range(dw*dh):
+                            rgb=data[i%dw,i//dw]
+                            p=pen(sx+int((i%dw)/scale),sy+int((i//dw)/scale),mode)
+                            if colors.setdefault(p,rgb)!=rgb: return False
+                        return len(set(colors.values()))>=(8 if mode==7 else 4)
+                    wait_for(matches,f"Viewer: {name} at zoom {scale}, source ({sx},{sy})",35)
+                fixture("A.PIC",113,77,1); fixture("B.PIC",273,510,7); fixture("C.PIC",59,15,6)
+                (folder/"BAD.PIC").write_bytes((folder/"B.PIC").read_bytes()[:2000])
+                key("f"); title("SD:"); at(64,40); double_click(); title("SD:/AAA")
+                at(144,40); double_click()
+                at(48,0); check("A.PIC",113,77,1,1)
+                key("minus"); check("A.PIC",113,77,1,0)
+                key("equal"); key("equal"); check("A.PIC",113,77,1,2)
+                at(256,176); key("space"); check("A.PIC",113,77,1,3)
+                at(216,176); key("space")  # far right of horizontal track
+                at(48,160); key("space"); at(48,0)
+                check("A.PIC",113,77,1,3,57,43)
+                key("ctrl+w"); title("SD:/AAA"); at(224,40); key("space"); key("i")
+                at(48,160); key("space"); at(48,0)
+                check("B.PIC",273,510,7,1,0,377)
+                key("Escape"); title("SD:/AAA"); key("ctrl+w")
+                check("A.PIC",113,77,1,3,57,43)
+                key("space"); key("1"); pick_row(" C.PIC")
+                check("C.PIC",59,15,6,1)
+                key("space"); key("1"); pick_row(" BAD.PIC")
+                filename(44,32,"Invalid picture")
+                key("space"); key("1"); pick_row(" A.PIC"); check("A.PIC",113,77,1,1)
+                key("Escape"); title("SD:/AAA"); key("Escape")
+                for p in folder.iterdir(): p.unlink()
+                folder.rmdir(); at(16,16); same_screen(desktop)
+                print("Agon Viewer: four zoom levels, clipped scrolling, two windows and GBPC 1/6/7 OK",flush=True)
+            if os.environ.get("AGON_VIEWER_ONLY"):
+                viewer()
+                return
             def xaos_picture(step,timeout=90):
                 expected=xaos_pixels(step)
                 wait_for(lambda s:s.resize((320,240),Image.Resampling.NEAREST)
@@ -300,7 +361,7 @@ def smoke(card, host):
                 view=sd/"VIEW.TXT"; exported=sd/"FRACTAL.PIC"
                 key("f"); title("SD:")
                 at(64,40); double_click(); title("SD:/GBENCH")
-                at(224,88); double_click()
+                at(64,128); double_click()
                 wait_for(lambda s:label_matches(s,font,144,99,"XAOS",True),"no XAOS window")
                 key("ctrl+w"); title("SD:/GBENCH"); key("v"); key("v"); key("ctrl+w")
                 xaos_picture(160)
@@ -329,7 +390,7 @@ def smoke(card, host):
                 x,y=exported_cell(wait_for(exported_cell,"export missing from Files"))
                 at(x+16,y-24); double_click()
                 wait_for(lambda s:label_matches(s,font,40,20,"FRACTAL.PIC",True) and
-                         preview_matches(s,raw,(x+16,y-24)), "exported PIC did not reopen")
+                         preview_matches(s,raw,(x+16,y-24),(44,32,80,56)), "exported PIC did not reopen in Viewer")
                 # Decode all packed pixels, independently from the preview renderer.
                 rgb=((0,0,170),(255,255,255),(0,0,0),(255,0,0))
                 assert bytes(c for b in raw[14:] for i in (3,2,1,0)
@@ -346,8 +407,8 @@ def smoke(card, host):
                 # is opened through Files and is not auto-started by the card.
                 key("f"); title("SD:")
                 move_keys("Right",6); move_keys("Down",3); double_click()
-                title("SD:/GBENCH"); filename(200,108,"XAOS.APP")
-                move_keys("Right",20); move_keys("Down",6); double_click()
+                title("SD:/GBENCH"); filename(48,152,"XAOS.APP")
+                move_keys("Down",11); double_click()
                 def window():
                     wait_for(lambda s:label_matches(s,font,144,99,"XAOS",True),"no XAOS window")
                 def complete():
@@ -382,7 +443,7 @@ def smoke(card, host):
                 key("f"); title("SD:")
                 at(216,40); double_click(); filename(164,116,"Worker never yields")
                 key("ctrl+w"); title("SD:"); at(64,40); double_click(); title("SD:/GBENCH")
-                at(224,88); double_click()
+                at(64,128); double_click()
                 wait_for(lambda s:label_matches(s,font,144,99,"XAOS",True),"no fallback XAOS")
                 xaos_picture(160,120)
                 key("Escape"); title("SD:/GBENCH")
@@ -551,7 +612,7 @@ def smoke(card, host):
                 key("ctrl+w")
                 title("SD:")
                 at(144,40); double_click(); title("SD:/PICS")
-                double_click()
+                key("space"); key("q")
                 picture=(sd/"PICS/1984.PIC").read_bytes()
                 move_keys("Up",8)  # keep the pointer outside the pixel comparison
                 wait_for(lambda s: label_matches(s,font,40,20,"1984.PIC",True)
@@ -739,6 +800,7 @@ def smoke(card, host):
                 print("Agon System menu, Settings, RTC and screensavers OK")
                 return
             xaos_files()
+            viewer()
             file_writes()
             documents()
             tap_arrow("Right")
@@ -819,7 +881,7 @@ def smoke(card, host):
             double_click()
             title("SD:/GBENCH")
             icon(20, 144, 31)
-            filename(200, 152, "DEFAULT.IST")
+            filename(200, 152, "AGON.CAT")
             # These draws are submitted consecutively. Check the whole set in
             # one frame, not just the last glyph to reach the display.
             def folder_frame(s):
@@ -830,10 +892,10 @@ def smoke(card, host):
                                                    (200, 64, "FILEMGR.APP"),
                                                    (48, 108, "NOTEPAD.APP"),
                                                    (124, 108, "PICVIEW.APP"),
-                                                   (200, 108, "XAOS.APP"),
-                                                   (48, 152, "WELCOME.TXT"),
-                                                   (124, 152, "AGON.CAT"),
-                                                   (200, 152, "DEFAULT.IST"))))
+                                                   (200, 108, "VIEWER.APP"),
+                                                   (48, 152, "XAOS.APP"),
+                                                   (124, 152, "WELCOME.TXT"),
+                                                   (200, 152, "AGON.CAT"))))
             wait_for(folder_frame, "corrupt File Manager title, controls or directory labels")
             capture = os.environ.get("AGON_CAPTURE_DIR")
             if capture:
@@ -871,7 +933,11 @@ def smoke(card, host):
             filename(124, 64, "1984.PIC")
             def preview(name, mouse):
                 raw = (sd / "PICS" / name).read_bytes()
-                double_click()
+                key("space")
+                if name == "1984.PIC":
+                    key("m"); label(44,70,"Quick preview"); key("6")
+                else:
+                    key("q")
                 shot = wait_for(lambda s: label_matches(s, font, 40, 20, name, True)
                                 and preview_matches(s, raw, mouse),
                                 f"preview differs for {name}", timeout=30)
@@ -905,7 +971,7 @@ def smoke(card, host):
             damaged = sd / "PICS/464.PIC"
             original = damaged.read_bytes()
             damaged.write_bytes(original[:1000])
-            double_click()
+            key("space"); key("q")
             filename(48, 45, "Invalid or unsupported")  # sprite covers the end
             key("Escape")
             title("SD:/PICS")

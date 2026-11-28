@@ -33,7 +33,7 @@ static void scroll_geometry(unsigned char track, unsigned int pos,
         *length = track;
         return;
     }
-    *length = (unsigned char)(((unsigned int)track * page) / total);
+    *length = scale_to_track(page, total, track);
     if (*length < THUMB_MIN) *length = THUMB_MIN;
     if (*length > track) *length = track;
     limit = total - page;

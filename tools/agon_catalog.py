@@ -9,7 +9,7 @@ def catalog(guests):
     records = bytearray()
     seen = set()
     for kind, data in guests:
-        if not 0 <= kind <= 5 or not 0 < len(data) <= 0x3f00:
+        if not 0 <= kind <= 6 or not 0 < len(data) <= 0x3f00:
             raise ValueError("invalid Agon window class or guest size")
         key = (len(data), crc_hqx(data, 0xffff))
         if key in seen:

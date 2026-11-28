@@ -142,6 +142,9 @@ int main(void)
           "large vertical scrollbar maps top");
     check(gb_vscroll16_value(10, 80, 1000, 160, 89) == 840,
           "large vertical scrollbar maps bottom");
+    reset_calls();
+    gb_vscroll16(1, 10, 3, 200, 0, 512, 400);
+    check(nfill == 2 && fills[1].h == 154, "half-zoom thumb uses a 16-bit page count");
 
     reset_calls();
     gb_hscroll16(8, 12, 40, 6, 30, 100, 25);

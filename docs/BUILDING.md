@@ -276,8 +276,8 @@ hold **Space**, use the arrows, then release **Space** to place the outline.
 Click an entry to select it; double-click to open. Click **View**
 in the title bar or press **V** to switch
 between icon and list views. Open **PICS** and double-click a picture such as
-`1984.PIC` (four pens) or `46416.PIC` (sixteen pens). The Agon picture preview
-shows the whole image, scaled down only when needed. **Esc** or **X** returns
+`1984.PIC` (four pens) or `46416.PIC` (sixteen pens). Viewer opens the
+picture at actual size. **Esc** or **X** returns
 to the same folder and selection. Alternatively, open
 **GBENCH**, then **CALC.APP**, and type `6x7=` to calculate 42. **Esc** returns
 to the same directory. Double-click **..** to go up; **Esc** or the window's
@@ -290,6 +290,15 @@ it once, choose **Copy**, switch to the destination folder or window, and
 choose **Paste**. **Esc** or the **Cancel** button stops an active copy.
 Paste never overwrites an existing file. Use **M** to open the menu from
 the keyboard, or **O/N/R/C/P** for New window/New folder/Rename/Copy/Paste.
+
+As a keyboard alternative, select a `.PIC` in Files and press **I** to open Viewer.
+Use the boxed **+** and **-** or the keyboard to choose half, normal,
+double or quadruple size. Use the left and bottom scrollbars to pan;
+with the keyboard pointer, **Space** clicks the track. Each picture window
+keeps its own zoom and scroll position. **File > Open** changes the picture
+in that window. You can also launch `GBENCH/VIEWER.APP` directly.
+For a fit-to-window preview instead, select the picture in Files and use
+**File > Quick preview** or press **Q**.
 
 Double-click `GBENCH/WELCOME.TXT` to open Notepad. **Space** types a space
 while editing, even if the pointer rests over a menu. Use **Shift+Space** or
@@ -337,7 +346,7 @@ Try `dir` or launch it a second time. No changes to the emulator's normal SD
 card or startup scripts are needed.
 
 `make agon` stages `QA/AGON/CARD/GEOBENCH.BIN`, the sample `PICS/` directory,
-and `GBENCH/{AGON.CAT,DEFAULT.IST,CALC.APP,FILEMGR.APP,NOTEPAD.APP,PICVIEW.APP,XAOS.APP,WELCOME.TXT}`.
+and `GBENCH/{AGON.CAT,DEFAULT.IST,CALC.APP,FILEMGR.APP,NOTEPAD.APP,PICVIEW.APP,VIEWER.APP,XAOS.APP,WELCOME.TXT}`.
 When updating a physical SD, copy the card contents together. The launcher
 checks each executable against the Agon catalogue's length and CRC before
 entering it; changing an app requires updating the catalogue, not rebuilding
@@ -357,7 +366,7 @@ The focused app receives input and frame callbacks. The workspace copies
 16 KiB guest pages on switches. UI callbacks remain cooperative. Applications
 keep their own variables, window geometry and document paths. File Manager
 uses the shared app source and cached VDP bitmaps from the portable icon set.
-The read-only `PICVIEW.APP` is a file association, not the full Viewer port:
+The optional read-only `PICVIEW.APP` is the Quick preview action:
 it accepts GBPC v2 modes 1, 6 and 7 up to 512x512, maps their pens to the
 active Agon palette, and fits the image to the window (initially 240x144).
 Moving the preview reuses its bitmap; resizing refits the source. It has no zoom or

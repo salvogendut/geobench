@@ -14,70 +14,16 @@ static u8 xbyte[WIDTH], colours[4][256];
 static const u8 *lookup[WIDTH];
 static u8 input[2048], output[WIDTH];
 static char title[34];
-static const u8 extras[] = {18,2,24,8,20,15,16,11,21,5,13,22};
 static u8 clear[] = {23,0,0xa0,ID_LO,ID_HI,2};
 static u8 append[] = {23,0,0xa0,ID_LO,ID_HI,0,0,0};
 static u8 define[] = {23,0,0xa0,ID_LO,ID_HI,14,23,27,0x20,ID_LO,ID_HI,
                       23,27,0x21,0,0,0,0,1};
 static u8 plot[] = {23,27,0x20,ID_LO,ID_HI,23,27,3,0,0,0,0};
 
-static void send(const void *p, unsigned len) __naked
-{
-    (void)p; (void)len;
-__asm
-    ld b,d
-    ld c,e
-    .db 0x49
-    rst 0x18
-    ret
-__endasm;
-}
-
-static u8 open_read(const char *path) __naked
-{
-    (void)path;
-__asm
-    ld c,#1
-    ld a,#0x0a
-    .db 0x49
-    rst 0x08
-    ret
-__endasm;
-}
-
-static unsigned read_file(void *dst, unsigned size) __naked
-{
-    (void)dst; (void)size;
-__asm
-    push de
-    .db 0x5b,0x11,0,0,0
-    pop de
-    ld a,(_handle)
-    ld c,a
-    ld a,#0x1a
-    .db 0x49
-    rst 0x08
-    ret
-__endasm;
-}
-
-static void close_file(void) __naked
-{
-__asm
-    ld a,(_handle)
-    ld c,a
-    ld a,#0x0b
-    .db 0x49
-    rst 0x08
-    ret
-__endasm;
-}
-
-static unsigned word(const u8 *p) { return p[0] | ((unsigned)p[1] << 8); }
+#include "agon_pic.h"
 
 static u8 prepare(void)
 {
-    static const u8 level[] = {0,2,3}; /* CPC firmware ink -> opaque ABGR2222 */
     u8 i;
     unsigned packed, x, sx = 0, frac = 0;
     if (read_file(input, 14) != 14 || memcmp(input,"GBPC",4) || input[4] != 2) return 0;
@@ -85,11 +31,7 @@ static u8 prepare(void)
     if ((mode != 1 && mode != 6 && mode != 7) || !width || width > 512 ||
         !height || height > 512) return 0;
     stride = mode == 7 ? (width+1)/2 : (width+3)/4;
-    for (i = 0; i < 16; ++i) {
-        u8 ink = i < 4 ? input[10+i] : extras[i-4];
-        if (ink > 26) return 0;
-        palette[i] = 0xc0 | (level[ink%3] << 4) | (level[ink/9] << 2) | level[(ink/3)%3];
-    }
+    if (!picture_palette(palette,input+10)) return 0;
     if (width <= view_w && height <= view_h) { dw = width; dh = height; }
     else if ((unsigned long)width*view_h > (unsigned long)height*view_w) {
         dw = view_w; dh = (unsigned long)height*view_w/width;

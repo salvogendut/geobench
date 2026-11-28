@@ -95,7 +95,23 @@ mouse_button    pop bc               ; B = sampled physical button
                 xor a
                 ld (space_vk),a
                 jr input_again
-input_idle      halt                 ; pump the RTC and saver even inside a guest
+input_idle      ld a,(space_vk)
+                or a
+                jr z,idle_halt
+                ; A launch or a repaint can outlast the Space release packet.
+                ; Re-arm clicks only after draining the FIFO and observing key-up.
+                db LIL
+                push ix
+                ld a,#1e
+                call mos
+                db LIL
+                bit 2,(ix+12)
+                db LIL
+                pop ix
+                jr nz,idle_halt
+                xor a
+                ld (space_vk),a
+idle_halt       halt                 ; pump the RTC and saver even inside a guest
                 ; A key may arrive during HALT. Service it before spending a
                 ; quantum on a different guest (MOS keeps the latest packet).
                 call AG_PROBE+22

@@ -58,6 +58,13 @@ hardware result does not cover those file workflows; retest them on a spare SD. 
 compute worker, not general app preemption. See the
 [card instructions](BUILDING.md#experimental-agonlight2-target).
 
+**M5 Viewer:** the card includes the shared Viewer with an Agon
+MOS/VDP backend: four zoom levels, scrollbars, File > Open and per-window
+viewport caching for GBPC v2 modes 1, 6 and 7. The user confirmed the Viewer
+trial on AgonLight2 hardware. Double-clicking a picture in Files now opens
+Viewer; **File > Quick preview** retains the fit-to-window PICVIEW. Fullscreen
+and directory cycling are not part of this first port.
+
 Start with the ABI/memory inventory and a tiny storage probe on a scratch SD card, not another resident accessory. Have File Manager launch a second build of the same Agon app without changing the kernel and reject an incompatible one. Then deliver the **Files -> Notepad -> Save As -> reopen in MOS** path. It is useful on its own and tests the loader, storage and UI contracts before BASIC or Paint starts depending on them.
 
 **Hardware references:** the [AgonLight2 board specification](https://www.olimex.com/Products/Retro-Computers/AgonLight2/open-source-hardware) lists 512 KiB of external CPU SRAM; that is not a promise of 512 KiB of free app memory. Use the [MOS API](https://agonplatform.github.io/agon-docs/mos/API/) for file, RTC and interrupt capabilities and the [VDP mode reference](https://agonplatform.github.io/agon-docs/vdp/Screen-Modes/) for display choices. Measure available resources on the supported firmware rather than assuming emulator limits.

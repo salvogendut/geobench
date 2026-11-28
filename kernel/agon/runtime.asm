@@ -238,6 +238,9 @@ guest_footer    ld a,(AG_FILEMODE)
                 cp 2
                 ld hl,pic_setup
                 jr z,footer
+                cp 6
+                ld hl,viewer_setup
+                jr z,footer
                 cp 5
                 ld hl,xaos_setup
                 jr z,footer
@@ -262,10 +265,12 @@ pic_setup       db 31,0,AG_STATUS_ROW," Picture preview            Esc: close "
 note_setup      db 31,0,AG_STATUS_ROW," Shift+Space: click   Ctrl-W: switch   "
 no_handler      db 31,0,AG_STATUS_ROW," Cannot open file on this Agon build   "
 xaos_setup      db 31,0,AG_STATUS_ROW," XAOS   +/-: zoom  R: reset  Esc: close"
+viewer_setup    db 31,0,AG_STATUS_ROW," Viewer   +/-: zoom         Esc: close "
                 assert fm_setup+42 == pic_setup
                 assert pic_setup+42 == note_setup
                 assert note_setup+42 == no_handler
                 assert no_handler+42 == xaos_setup
-                assert xaos_setup+42 == $
+                assert xaos_setup+42 == viewer_setup
+                assert viewer_setup+42 == $
 wnd_title       equ #17e4
                 include "draw.asm"
