@@ -12,25 +12,47 @@ AGON_CALC := QA/CPC/CARD/GBENCH/CALC.APP
 AGON_FM := $(AGON_CARD)/GBENCH/FILEMGR.APP
 AGON_IST := $(AGON_CARD)/GBENCH/DEFAULT.IST
 AGON_PREVIEW := $(AGON_CARD)/GBENCH/PICVIEW.APP
+AGON_NOTE := $(AGON_CARD)/GBENCH/NOTEPAD.APP
+AGON_XAOS := $(AGON_CARD)/GBENCH/XAOS.APP
+AGON_CAT := $(AGON_CARD)/GBENCH/AGON.CAT
 AGON_PICS := $(patsubst assets/pictures/%,$(AGON_CARD)/PICS/%,$(wildcard assets/pictures/*.PIC))
-agon: $(AGON_CARD)/GEOBENCH.BIN $(AGON_PICS) $(AGON_CARD)/GBENCH/CALC.APP $(AGON_FM) $(AGON_IST)
+agon: $(AGON_CARD)/GEOBENCH.BIN $(AGON_PICS) $(AGON_CAT) $(AGON_IST) $(AGON_CARD)/GBENCH/WELCOME.TXT
 
-$(AGON_CARD)/GEOBENCH.BIN: kernel/agon/boot.asm kernel/agon/input.asm kernel/agon/input.inc kernel/lowram.inc lib/gbapp.inc build/agon/runtime.bin build/agon/files.bin build/agon/window.bin build/agon/system.bin build/agon/calc.inc
+$(AGON_CARD)/GBENCH/WELCOME.TXT: assets/WELCOME.TXT
+	mkdir -p $(@D)
+	cp $< $@
+
+AGON_GUESTS := 0:$(AGON_CARD)/GBENCH/CALC.APP 1:$(AGON_FM) 2:$(AGON_PREVIEW) 3:$(AGON_NOTE) 5:$(AGON_XAOS)
+$(AGON_FM) $(AGON_NOTE): lib/gb/gbagon.h
+$(AGON_CAT): tools/agon_catalog.py $(AGON_CARD)/GBENCH/CALC.APP $(AGON_FM) $(AGON_PREVIEW) $(AGON_NOTE) $(AGON_XAOS)
+	python3 $< $@ $(AGON_GUESTS)
+
+$(AGON_NOTE): apps/notepad/main.c apps/notepad/icon.asm Makefile tools/build_capp.sh tools/build_cache.sh lib/gb/gb.h lib/gb/gbdoc.c lib/gb/gbui_stub.c lib/gb/gblib.s lib/gb/gbwin.c
+	APPDEFS=-DGB_AGON APP_ICON=apps/notepad/icon.asm DOC=1 APP_CFLAGS=--opt-code-size DATA_LOC=0x6c00 bash tools/build_capp.sh apps/notepad build/agon/NOTEPAD.RAW
+	cp build/agon/NOTEPAD.RAW $@
+
+$(AGON_CARD)/GEOBENCH.BIN: kernel/agon/boot.asm kernel/agon/input.asm kernel/agon/input.inc kernel/lowram.inc lib/gbapp.inc build/agon/runtime.bin build/agon/files.bin build/agon/window.bin build/agon/system.bin build/agon/worker.bin build/agon/ist.inc
 	mkdir -p $(@D)
 	$(RASM) $< -ob $@
 
 # Same analog face and Squares animation as the other targets; MOS input,
 # persistence and VDP line drawing are Agon-specific.
-build/agon/system.bin: kernel/agon/system.c kernel/agon/saver_screen.c kernel/agon/system_entry.s apps/clock/main.c apps/saver/main.c lib/gb/gbwin.c lib/gb/gblib.s lib/gb/gb.h
+build/agon/system.bin: kernel/agon/system.c kernel/agon/guest.c kernel/agon/document.c kernel/agon/storage.c kernel/agon/storage.h kernel/agon/fileops.c kernel/agon/workspace.c kernel/agon/saver_screen.c kernel/agon/system_entry.s apps/clock/main.c apps/saver/main.c lib/gb/gbwin.c lib/gb/gblib.s lib/gb/gb.h lib/gb/gbagon.h
 	mkdir -p $(@D)
 	sdasz80 -o $(@D)/system_entry.rel kernel/agon/system_entry.s
 	sdasz80 -o $(@D)/syslib.rel lib/gb/gblib.s
 	sdcc -mz80 --opt-code-size -DGB_AGON -Ilib/gb -c kernel/agon/system.c -o $(@D)/sys.rel
 	sdcc -mz80 --opt-code-size -c kernel/agon/saver_screen.c -o $(@D)/saver_screen.rel
+	sdcc -mz80 --opt-code-size -DGB_AGON -Ilib/gb -c kernel/agon/workspace.c -o $(@D)/workspace.rel
+	sdcc -mz80 --opt-code-size -DGB_AGON -Ilib/gb -c kernel/agon/document.c -o $(@D)/document.rel
+	sdcc -mz80 --opt-code-size -Ilib/gb -c kernel/agon/storage.c -o $(@D)/storage.rel
+	sdcc -mz80 --opt-code-size -DGB_AGON -Ilib/gb -c kernel/agon/fileops.c -o $(@D)/fileops.rel
+	sdcc -mz80 --opt-code-size -c kernel/agon/guest.c -o $(@D)/guest.rel
 	sdcc -mz80 --opt-code-size -DGB_AGON -Ilib/gb -c apps/clock/main.c -o $(@D)/clock.rel
 	sdcc -mz80 --opt-code-size -DGB_AGON -Ilib/gb -c apps/saver/main.c -o $(@D)/squares.rel
 	sdcc -mz80 --opt-code-size -DGB_AGON -Ilib/gb -c lib/gb/gbwin.c -o $(@D)/syswin.rel
-	sdcc -mz80 --no-std-crt0 --code-loc 0xa000 --data-loc 0xd800 $(addprefix $(@D)/,system_entry.rel sys.rel saver_screen.rel clock.rel squares.rel syswin.rel syslib.rel) -o $(@D)/system.ihx
+	sdcc -mz80 --no-std-crt0 --code-loc 0xa000 --data-loc 0xe480 $(addprefix $(@D)/,system_entry.rel sys.rel saver_screen.rel workspace.rel document.rel storage.rel fileops.rel guest.rel clock.rel squares.rel syswin.rel syslib.rel) -o $(@D)/system.ihx
+	python3 -c 'import re; s=open("$(@D)/system.map").read(); a,n=(int(x,16) for x in re.search(r"^_DATA\s+(\w+)\s+(\w+)",s,re.M).groups()); assert a+n<=0xeb00, "Agon system data overlaps Files"'
 	makebin -s 65536 -p $(@D)/system.ihx $(@D)/system.flat
 	tail -c +40961 $(@D)/system.flat > $@
 
@@ -57,10 +79,10 @@ build/agon/files.bin: kernel/agon/files.c kernel/agon/icons.c kernel/agon/files_
 	makebin -s 65536 -p $(@D)/files.ihx $(@D)/files.flat
 	tail -c +34817 $(@D)/files.flat > $@
 
-# The guests have no executable header. Only enter the staged payloads.
-build/agon/calc.inc: $(AGON_CALC) $(AGON_FM) $(AGON_IST) $(AGON_PREVIEW) tools/agon_signatures.py
+# Only the boot icon set is a fixed kernel resource. Guests are in AGON.CAT.
+build/agon/ist.inc: $(AGON_IST) tools/agon_signatures.py
 	mkdir -p $(@D)
-	python3 tools/agon_signatures.py $(AGON_CALC) $(AGON_FM) $(AGON_IST) $(AGON_PREVIEW) > $@
+	python3 tools/agon_signatures.py $(AGON_IST) > $@
 
 $(AGON_PREVIEW): kernel/agon/picview/main.c Makefile tools/build_capp.sh tools/build_cache.sh tools/check_app_layout.py lib/gb/gb.h lib/gb/gblib.s lib/gb/gbwin.c lib/gb/crt0.s
 	APPDEFS=-DGB_AGON APP_CFLAGS=--fno-omit-frame-pointer GBWIN=1 bash tools/build_capp.sh kernel/agon/picview build/agon/PICVIEW.RAW
@@ -68,7 +90,7 @@ $(AGON_PREVIEW): kernel/agon/picview/main.c Makefile tools/build_capp.sh tools/b
 	cp build/agon/PICVIEW.RAW $@
 
 $(AGON_FM): apps/filemgr/main.c Makefile tools/build_capp.sh tools/build_cache.sh tools/check_app_layout.py lib/gb/gb.h lib/gb/gbwin.c lib/gb/gbdoc.c lib/gb/gbscroll.c lib/gb/gbui_stub.c lib/gb/gblib.s lib/gb/crt0.s
-	APPDEFS=-DGB_AGON APP_CFLAGS=--opt-code-size DATA_LOC=0x7800 DOCRO=1 SCROLL=1 bash tools/build_capp.sh apps/filemgr build/agon/FILEMGR.RAW
+	APPDEFS=-DGB_AGON APP_CFLAGS=--opt-code-size DATA_LOC=0x7900 DOCRO=1 SCROLL=1 bash tools/build_capp.sh apps/filemgr build/agon/FILEMGR.RAW
 	mkdir -p $(@D)
 	cp build/agon/FILEMGR.RAW $@
 
@@ -88,6 +110,34 @@ run-agon: agon
 	mkdir -p $(AGON_RUN_CARD)
 	cp -R $(AGON_CARD)/. $(AGON_RUN_CARD)/
 	flatpak run --filesystem="$(abspath $(AGON_RUN_CARD)):rw" io.github.tomm.fab_agon_emulator --sdcard "$(abspath $(AGON_RUN_CARD))"
+
+# Separate disposable card with timer telemetry and the non-yielding test guest.
+AGON_DIAG := build/agon-task-sd
+.PHONY: agon-taskdiag run-agon-taskdiag test-agon-taskdiag
+build/agon/task_probe.bin: PROBE_FLAGS := -DAGON_TASK_PROBE=1
+build/agon/worker.bin build/agon/task_probe.bin: kernel/agon/worker.asm kernel/agon/input.inc lib/gbapp.inc
+	mkdir -p $(@D)
+	$(RASM) $< $(PROBE_FLAGS) -ob $@
+
+build/agon/TASKDEMO.APP: kernel/agon/taskdemo/main.c tools/build_capp.sh lib/gb/gb.h
+	APPDEFS=-DGB_AGON TASK_STACK_RESERVE=512 GBWIN=1 bash tools/build_capp.sh kernel/agon/taskdemo $@
+
+$(AGON_XAOS): apps/xaos/main.c apps/xaos/agon.h apps/xaos/icon.asm lib/gb/gb.h lib/gb/gbagon.h lib/gb/gbdoc.c lib/gb/gbwin.c lib/gb/gblib.s lib/gb/gbui_stub.c lib/gb/gbwidgets.c tools/build_capp.sh Makefile
+	APPDEFS=-DGB_AGON APP_ICON=apps/xaos/icon.asm DATA_LOC=0x7000 TASK_STACK_RESERVE=512 DOC=1 BUTTON=1 bash tools/build_capp.sh apps/xaos build/agon/XAOS.APP
+	cp build/agon/XAOS.APP $@
+
+agon-taskdiag: agon build/agon/task_probe.bin build/agon/TASKDEMO.APP
+	mkdir -p $(AGON_DIAG)
+	cp -R $(AGON_CARD)/. $(AGON_DIAG)/
+	$(RASM) kernel/agon/boot.asm -DAGON_TASK_PROBE=1 -ob $(AGON_DIAG)/GEOBENCH.BIN
+	cp build/agon/TASKDEMO.APP $(AGON_DIAG)/
+	python3 tools/agon_catalog.py $(AGON_DIAG)/GBENCH/AGON.CAT $(AGON_GUESTS) 4:$(AGON_DIAG)/TASKDEMO.APP
+
+run-agon-taskdiag: agon-taskdiag
+	flatpak run --filesystem="$(abspath $(AGON_DIAG)):rw" io.github.tomm.fab_agon_emulator --sdcard "$(abspath $(AGON_DIAG))"
+
+test-agon-taskdiag: agon-taskdiag
+	AGON_TASK_ONLY=1 xvfb-run -a -s "-screen 0 1024x768x24" python3 tools/test_agon_boot.py $(AGON_DIAG) $(AGON_TEST_HOST)
 
 build/agon/test_glyphs: tools/test_agon_glyphs.c kernel/agon/icons.c
 	mkdir -p $(@D)

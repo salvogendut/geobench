@@ -19,6 +19,9 @@
         jp _fm_icons_reset
         jp _fm_text
         jp _fm_document
+        .globl _fm_selected
+        jp _fm_selected
+_managed_path:: jp 0xa036
 _send_vdu::
         ld b,d
         ld c,e

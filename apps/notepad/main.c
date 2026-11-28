@@ -459,7 +459,11 @@ static void np_saved(void)
 }
 
 /* the file types Notepad opens - the file dialog shows only these (+ folders) */
+#ifdef GB_AGON
+static const char *const np_exts[] = { "TXT", 0 };
+#else
 static const char *const np_exts[] = { "TXT", "BAS", "CFG", 0 };
+#endif
 static void select_all(void);            /* the Edit-menu hooks (defined below) */
 static void copy_sel(void);
 static void paste_clip(void);
@@ -477,7 +481,13 @@ static void np_fullscreen(unsigned char on)
 
 static const gb_doc_t npdoc = {
     buf, NP_MAX, np_new, np_open, np_save, np_saved, copy_sel, paste_clip, select_all,
-    np_exts, 0, 0, np_fullscreen, 0, 0
+    np_exts, 0, 0,
+#ifdef GB_AGON
+    0, /* moving/resizing is owned by the Agon window manager */
+#else
+    np_fullscreen,
+#endif
+    0, 0
 };
 
 /* --- Edit menu: copy / paste over a selection (#99) ----------------------- */
@@ -554,7 +564,7 @@ static unsigned char cursor_over(void)
    directly so the keys stay globally disarmed (no char-buffer flood) yet still reach
    us. Only A + arr_bits cross each call, so a KM_TEST_KEY register clobber can't
    corrupt the accumulator. */
-#if defined(GB_MSX2) || defined(GB_PCW)
+#if defined(GB_MSX2) || defined(GB_PCW) || defined(GB_AGON)
 /* MSX2/PCW have no CPC firmware: #BB1E is not KM_TEST_KEY there, and calling it wrote an
    invalid i8255 PPI mode that HUNG the machine the instant a text app tried to read
    the cursor keys (#287). On MSX the cursor keys ARE the pointer (GTSTCK 0) anyway,
@@ -783,6 +793,9 @@ static void n_frame(void)
                                                      smoothly, with the frame untouched (no flash) */
                 gb_curhide(); draw(); gb_curshow();
             } else {                              /* File/View action (or a fallback picker): full repaint */
+#ifndef GBDOC_BOUNDED_IO
+                win_title();                     /* synchronous File actions already changed the name/dirty flag */
+#endif
                 gb_restore_parent();
             }
             return;
@@ -811,7 +824,14 @@ static void n_frame(void)
     while (n--) {
         c = gb_getkey();
         if (!c) break;
-        if (c == K_QUIT) { gb_wm_close(); return; }
+        if (c == K_QUIT) {
+#ifdef GB_AGON
+            n_close();
+#else
+            gb_wm_close();
+#endif
+            return;
+        }
         if (c == K_BS || c == K_DEL) { del_back(); edited = 1; }
         else if (c == K_ENTER) { ins('\n'); edited = 1; }
         else if (c == K_TAB) { ins(' '); ins(' '); ins(' '); ins(' '); edited = 1; }
@@ -878,6 +898,9 @@ void main(void)
     gb_doc_startup_load();                       /* one 512-byte read per focused frame */
 #else
     len = gb_fs_load(buf, NP_MAX);              /* load the launch file (0 if none) */
+#ifdef GB_AGON
+    if (len==0xffff) { gb_wm_close(); return; }
+#endif
     if (is_bas()) len = strip_cr(len);           /* .BAS in CR+LF -> edit as plain \n */
     cur = len; view_first = 0;
 #endif

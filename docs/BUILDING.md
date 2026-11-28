@@ -256,6 +256,8 @@ The default Philips NMS 8250 definition exposes one drive, so swap
 
 ## Experimental AgonLight2 target
 
+For the remaining desktop, runtime and application work, see the [Agon port plan](AGON_PORT_PLAN.md).
+
 From the checkout root, run `make run-agon`. This builds a standalone MOS
 program, then launches **Fab Agon Emulator** (Flatpak
 `io.github.tomm.fab_agon_emulator`) with a writable SD copy in
@@ -280,6 +282,41 @@ to the same folder and selection. Alternatively, open
 **GBENCH**, then **CALC.APP**, and type `6x7=` to calculate 42. **Esc** returns
 to the same directory. Double-click **..** to go up; **Esc** or the window's
 **X** closes File Manager.
+
+In Files, use **File > New window** to open another view at the SD root.
+Each keeps its own folder, scroll position and selection when you switch.
+**New folder** and **Rename** accept an 8.3 name. To copy a file, select
+it once, choose **Copy**, switch to the destination folder or window, and
+choose **Paste**. **Esc** or the **Cancel** button stops an active copy.
+Paste never overwrites an existing file. Use **M** to open the menu from
+the keyboard, or **O/N/R/C/P** for New window/New folder/Rename/Copy/Paste.
+
+Double-click `GBENCH/WELCOME.TXT` to open Notepad. **Space** types a space
+while editing, even if the pointer rests over a menu. Use **Shift+Space** or
+the mouse to click. In menus, dialogs and Files, **Space** still clicks.
+**File > Open** and **File > Save As** start in the document's folder. Click
+a numbered row (or press its number); brackets denote folders. **Backspace**
+goes up, **-** and **+** change pages, and **Esc** cancels. For Save As,
+choose **Use this folder** or press **Enter**, then enter an 8.3 filename
+(for example `TEST.TXT`). **Save** updates that copy. Canceling either
+prompt does not change the save target or File Manager's directory.
+**File > Exit** closes Notepad, not GEOBENCH. A clean document offers Exit
+or Cancel; with unsaved edits choose Save, Don't Save or Cancel. If the save
+fails, the editor stays open with the edits intact.
+Notepad accepts up to 4096 bytes. For board tests use a spare writable card.
+If a failed replacement leaves `GBSAVE.BAK` or `GBSAVE.TMP`, inspect it in
+MOS before removing it; the editor won't overwrite a recovery file.
+
+Open **GBENCH/XAOS.APP** to explore the Mandelbrot set. Click to recenter,
+use **+** or **-** to zoom and **R** to reset. A render continues while you
+browse Files (**Ctrl+W** to switch). **File > Save As** saves a small
+`.TXT` definition: `XAOS`, the two signed centre coordinates, then the
+positive step, one decimal integer per line after the header (Q4.12 units).
+Use **File > Open** inside XAOS to resume it; double-clicking a text file in
+Files still opens Notepad. **File > Export PIC** writes the completed 80x56
+four-pen image as a portable mode-1 GBPC v2 picture. Give it an unused name;
+export doesn't overwrite files or change where **Save** writes the definition.
+Double-click the exported `.PIC` in Files to view it.
 On the desktop **C** is a Calculator shortcut, **W** toggles the wallpaper,
 and **Esc** returns to MOS.
 Click **System** at the top left for **Settings**, **Clock**, or **Run saver**.
@@ -300,9 +337,11 @@ Try `dir` or launch it a second time. No changes to the emulator's normal SD
 card or startup scripts are needed.
 
 `make agon` stages `QA/AGON/CARD/GEOBENCH.BIN`, the sample `PICS/` directory,
-and `GBENCH/{FILEMGR.APP,DEFAULT.IST,CALC.APP,PICVIEW.APP}`. When updating
-a physical SD, copy that directory's contents together: the launcher checks
-for matching app versions. Calculator is byte-for-byte the
+and `GBENCH/{AGON.CAT,DEFAULT.IST,CALC.APP,FILEMGR.APP,NOTEPAD.APP,PICVIEW.APP,XAOS.APP,WELCOME.TXT}`.
+When updating a physical SD, copy the card contents together. The launcher
+checks each executable against the Agon catalogue's length and CRC before
+entering it; changing an app requires updating the catalogue, not rebuilding
+the resident kernel. Calculator is byte-for-byte the
 shipped CPC binary, not a reimplementation. This target uses RASM and SDCC and is not
 part of the default CPC/MSX/PCW distribution build. The test baseline is
 Fab Agon Emulator 1.2.6 with its default Platform firmware; the graphics
@@ -312,27 +351,66 @@ code requires the [buffer-backed bitmap commands](https://agonplatform.github.io
 Desktop startup and readable File Manager titles and filenames have been
 confirmed on a physical AgonLight2. Picture preview still needs a board test.
 
-In this prototype one guest is active at a time. File Manager is an Agon build
-of the shared `apps/filemgr/main.c`, with read-only MOS directory services and
-cached VDP bitmaps from the portable icon set. The launcher checks guest
-binaries against their built sizes and CRCs before entering them at `0x4000`.
-Launching Calculator or a picture from File Manager temporarily saves the
-parent's 16 KiB page in RAM and restores it when the child closes.
+Up to three managed guests, including multiple Files windows, can remain open.
+Click an exposed part of a window to raise it, or use **Ctrl+W** to cycle.
+The focused app receives input and frame callbacks. The workspace copies
+16 KiB guest pages on switches. UI callbacks remain cooperative. Applications
+keep their own variables, window geometry and document paths. File Manager
+uses the shared app source and cached VDP bitmaps from the portable icon set.
 The read-only `PICVIEW.APP` is a file association, not the full Viewer port:
 it accepts GBPC v2 modes 1, 6 and 7 up to 512x512, maps their pens to the
 active Agon palette, and fits the image to the window (initially 240x144).
 Moving the preview reuses its bitmap; resizing refits the source. It has no zoom or
-editing controls. Opening other types of document is not supported yet.
-Its resident jump table at `0x8000` handles window registration, drawing with
+editing controls. The other supported document association is `.TXT`.
+The resident jump table at `0x8000` handles window registration, drawing with
 GEOBENCH's 6x8 font, keyboard input, pointer clicks and close. Closing the window restores
 the previous desktop from the cached VDP bitmap; quitting restores the MOS mode.
 File Manager uses 8.3 names. **B** on the desktop still opens the compact MOS
 browser for long-name-only files. Neither browser changes the MOS working
-directory. The compact browser is fixed in place. General file writes, dragging files
-between windows, independent app windows, and preemption are not implemented on Agon yet.
+directory. The compact browser is fixed in place and read-only. Managed
+Files can copy individual files, not directory trees; deleting files and
+dragging them between windows are not implemented yet. General preemptive
+scheduling is not enabled on Agon.
 
 For an automated check, `make test-agon` needs the Flatpak, Xvfb, xdotool,
 ImageMagick and Python with Pillow. It uses a private display and a temporary
 copy of the staged card. On the development machine those X11 tools are in
 `my-distrobox`; use
 `distrobox enter my-distrobox -- make test-agon AGON_TEST_HOST=distrobox-host-exec`.
+
+### Optional Agon timer diagnostic
+
+`make run-agon-taskdiag` launches Fab with a separate card in
+`build/agon-task-sd/`. At MOS run `geobench`, open the SD icon, launch
+`TASKDEMO.APP` from the root, then return to Files with **Ctrl+W**.
+Open `GBENCH/WELCOME.TXT` and type: the hexadecimal **Task** counter in
+the top bar should change while Notepad owns the keyboard. Close the demo
+window: the counter should disappear and the document should remain editable.
+Exit to MOS and repeat. The automated equivalent is `make test-agon-taskdiag`
+with the same `AGON_TEST_HOST` setting as above.
+
+Close TASKDEMO before starting **GBENCH/XAOS.APP** to see its background row count. A home Mandelbrot render
+starts immediately. Press **Ctrl+W**, browse Files and watch **Task** count the
+completed rows in hexadecimal (`0038` = all 56). Switch back to see the
+finished picture. Use **+** or **-** to zoom, click the picture to recenter,
+or **R** to reset. Start a zoom, close XAOS before the counter finishes,
+then reopen it. Both cards run the same XAOS app; only the diagnostic card
+shows a **Task** counter and includes TASKDEMO.
+
+Only one compute worker can own timer 5. It has a private Z80 stack; a
+one-shot eZ80 PRT5 interrupt records its PC. The dispatcher preserves its
+registers and restores the foreground guest page before returning to input.
+Only published rows are drawn, by the foreground callback. The ISR never
+calls MOS or the VDP. The previous vector is restored on completion,
+cancellation, owner close or exit to MOS. The normal card installs the hook
+only when requested. If timer 5 is busy, XAOS renders eight pixels per
+focused frame instead. New compute guests must reserve the top 512 bytes of
+their guest page and follow the contract in [gbagon.h](../lib/gb/gbagon.h).
+
+On physical hardware first use a spare card with the normal build: Save As
+from `GBENCH/WELCOME.TXT` to `/TEST.TXT`, close and reboot, then verify both
+files and try switching between Files, Notepad and a picture. For the timer
+test copy the **entire** diagnostic card to a separate SD. Check typing,
+counter movement, background rendering while browsing, closing mid-render,
+MOS return and relaunch. On the normal card also save and reopen a fractal
+definition and open its exported PIC from Files.

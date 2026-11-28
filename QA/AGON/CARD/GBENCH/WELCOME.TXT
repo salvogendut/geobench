@@ -1,0 +1,15 @@
+GEOBENCH
+A GEOS/Workbench-style desktop for
+the Amstrad CPC.
+
+You are reading this file in VIEWER,
+the first GEOBENCH app written in C.
+It runs in an expansion bank and asks
+the kernel to load this file, then
+draws the text through the same API
+the assembly apps use.
+
+Double-click a file on Disk A to open
+it; press ESC or click to close.
+
+Enjoy exploring!

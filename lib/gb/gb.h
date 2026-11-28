@@ -433,6 +433,9 @@ typedef struct {
     const char *const *view_items;
     void         (*on_view)(unsigned char item);
     unsigned char flags;
+#ifdef GB_AGON
+    unsigned char (*validate)(const void *,unsigned int); /* before committing Open */
+#endif
 } gb_doc_t;
 #define GB_DOC_LOAD_NOCONFIRM 0x01
 #define GB_DOC_OPEN_OWNS_LOAD 0x02

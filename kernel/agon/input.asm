@@ -20,7 +20,7 @@ input_settle    halt
                 ld (last_button),a
                 db LIL
                 ld a,(ix+#19)
-                ld (key_count),a
+                call AG_PROBE+19
                 jp pointer_plot
 
 ; Read a coherent MOS packet, not a mixture of coordinates across an IRQ.
@@ -84,22 +84,9 @@ mouse_button    pop bc               ; B = sampled physical button
                 jr nz,input_click
 
                 call keyboard_pointer
-                di
-                db LIL
-                ld a,(ix+#19)
-                ld b,a
-                db LIL
-                ld c,(ix+#18)        ; down/up
-                db LIL
-                ld e,(ix+#17)        ; virtual key (also valid on release)
-                db LIL
-                ld d,(ix+5)          ; ASCII on press
-                ei
-                ld a,(key_count)
-                cp b
-                jr z,input_idle
-                ld a,b
-                ld (key_count),a
+                call AG_PROBE+22
+                call AG_PROBE+25      ; dequeue one packet: C=state, D=ASCII, E=VK
+                jr nc,input_idle
                 bit 0,c
                 jr nz,input_keydown
                 ld a,(space_vk)
@@ -109,17 +96,40 @@ mouse_button    pop bc               ; B = sampled physical button
                 ld (space_vk),a
                 jr input_again
 input_idle      halt                 ; pump the RTC and saver even inside a guest
+                ; A key may arrive during HALT. Service it before spending a
+                ; quantum on a different guest (MOS keeps the latest packet).
+                call AG_PROBE+22
+                or a
+                jp nz,input_again
+                db LIL
+                push ix
+                call AG_PROBE+6
+                db LIL
+                pop ix
                 xor a
                 call system_input
+                cp 253
+                jr z,input_deliver
                 jp input_again
 input_keydown   ld a,d
                 or a
-                jr z,input_again
+                jp z,input_again
                 cp ' '
                 jr nz,input_arrows
                 ld a,(space_vk)
                 or a
-                jp nz,input_again    ; ignore typematic Space
+                jp nz,input_again    ; a held click must not start typing on refocus
+                db LIL
+                bit 1,(ix+6)         ; Shift+Space always emulates a primary click
+                jr nz,input_space
+                push de              ; keep the virtual key for click release
+                call AG_TEXT_FOCUS   ; ordinary Space belongs to the focused editor?
+                pop de
+                or a
+                jr z,input_space
+                ld a,254             ; text Space, without GB_FIRE or a click timestamp
+                jr input_return
+input_space
                 ld a,e
                 ld (space_vk),a
 input_click     di
@@ -162,7 +172,13 @@ system_input    db LIL
 input_arrows    cp 21
                 jp z,input_again
                 cp 8
-                jp z,input_again
+                jr nz,input_down
+                ld a,e               ; use this packet, not a later held-key sample
+                cp 132               ; fabgl::VK_BACKSPACE (Left also sends ASCII 8)
+                jp nz,input_again
+                ld a,8
+                jr input_return
+input_down
                 cp 10
                 jp z,input_again
                 cp 11

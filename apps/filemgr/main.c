@@ -1435,7 +1435,29 @@ static void fm_frame(void)
     sync_rect();
     gb_set_drive(my_drive);              /* re-assert our drive each focused frame (#65) */
 #ifdef GB_AGON
-    if ((gb_getkey() | 32) == 'v') fm_view(0);
+    {
+        static const char *const actions[]={"New window","New folder","Rename","Copy","Paste"};
+        unsigned char k=gb_getkey(),sel;
+        if(k==252) {
+            build_list(); nsel=dc_timer=0; clamp_top(); return;
+        }
+        k|=32;
+        if(k=='m') {
+            sel=gb_popup(10,8,actions,5);
+            if(sel>=5) return;
+            k="onrcp"[sel];
+        }
+        if(k=='v') fm_view(0);
+        else if(k=='n' || k=='r' || k=='c' || k=='p' || k=='o') {
+            if(k=='r' || k=='c') {
+                if(nsel<=up_avail() || !seek_entry(NAME_AT(order[nsel-up_avail()-1]))) {
+                    gb_alert("Select an entry first",""); return;
+                }
+            }
+            ((void (*)(unsigned char))0xa039)(k);
+            dc_timer=0; return;
+        }
+    }
 #endif
 #ifdef GB_PREEMPTIVE
     if (copy_state != COPY_IDLE) { copy_step(); return; }

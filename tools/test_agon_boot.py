@@ -95,6 +95,28 @@ def label_matches(image, font, x, y, text, selected=False, blue=False):
     return True
 
 
+def xaos_pixels(scale):
+    """Independent Q4.12 reference, including the Z80's signed truncation."""
+    def s16(x):
+        return ((x+32768) & 65535)-32768
+    def mul(a,b):
+        n=abs(a*b)>>12
+        return s16(-n if (a<0)!=(b<0) else n)
+    out=bytearray()
+    for y in range(56):
+        for x in range(80):
+            cx,cy=-2048+(x-40)*scale,(y-28)*scale
+            zx=zy=0
+            for i in range(20):
+                xx,yy=mul(zx,zx),mul(zy,zy)
+                if ((xx+yy)&65535)>=0x4000: break
+                zx,zy=s16(xx-yy+cx),s16(2*mul(zx,zy)+cy)
+            else: i=20
+            out.extend((0,0,0) if i==20 else (0,0,170) if i<5 else
+                       (255,0,0) if i<11 else (255,255,255))
+    return bytes(out)
+
+
 def smoke(card, host):
     pic = (card / "PICS/LOGO.PIC").read_bytes()
     cpc = Path(__file__).resolve().parents[1] / "QA/CPC/CARD/GBENCH"
@@ -153,6 +175,10 @@ def smoke(card, host):
 
             def wait_wallpaper():
                 return wait_for(lambda s: wallpaper_matches(s, pic), "VDP wallpaper differs")
+
+            def error_footer(s):
+                box=(0,232*s.height//240,s.width,s.height)
+                return wallpaper_matches(s,pic) and s.crop(box).tobytes()!=desktop.crop(box).tobytes()
 
             def calculator(value):
                 wait_for(lambda s: calc_display_matches(s, value, font),
@@ -249,6 +275,345 @@ def smoke(card, host):
                 return True
             def tap_arrow(name):
                 run("xdotool", "keydown", name, "sleep", ".025", "keyup", name)
+            def at(x,y):
+                move_keys("Left",40); move_keys("Up",30)
+                if x: move_keys("Right",x//8)
+                if y: move_keys("Down",y//8)
+            def pick_row(name):
+                def row(s):
+                    return next((i+1 for i in range(6) if label_matches(
+                        s,font,56,67+12*i,f"{i+1} {name}")),0)
+                key(str(row(wait_for(row,f"no picker row {name!r}"))))
+            def xaos_picture(step,timeout=90):
+                expected=xaos_pixels(step)
+                wait_for(lambda s:s.resize((320,240),Image.Resampling.NEAREST)
+                         .crop((144,111,224,167)).tobytes()==expected,
+                         f"XAOS output differs from reference at step {step}",timeout)
+            def xaos_files():
+                def action(n):
+                    key("space"); label(44,58,"Export PIC"); key(str(n))
+                def name_file(n,name):
+                    action(n); label(56,41,"Save in folder"); key("Return")
+                    label(80,85,"Save as:" if n==4 else "Export PIC as:")
+                    run("xdotool","type","--delay","100",name); key("Return")
+                bad=sd/"BAD.TXT"; bad.write_bytes(b"XAOS\n-2048\n0\n32768\n")
+                view=sd/"VIEW.TXT"; exported=sd/"FRACTAL.PIC"
+                key("f"); title("SD:")
+                at(64,40); double_click(); title("SD:/GBENCH")
+                at(224,88); double_click()
+                wait_for(lambda s:label_matches(s,font,144,99,"XAOS",True),"no XAOS window")
+                key("ctrl+w"); title("SD:/GBENCH"); key("v"); key("v"); key("ctrl+w")
+                xaos_picture(160)
+                assert not label_matches(screen(),font,200,0,"Task ")
+                key("equal"); at(48,0); xaos_picture(80)
+                name_file(4,"VIEW")
+                wait_for(lambda _:view.exists() and view.read_bytes()==b"XAOS\n-2048\n0\n80\n",
+                         "incorrect saved fractal definition")
+                name_file(5,"FRACTAL")
+                wait_for(lambda _:exported.exists(),"no exported picture")
+                raw=exported.read_bytes()
+                assert raw[:14]==b"GBPC"+bytes((2,1,80,0,56,0,1,26,0,6)) and len(raw)==1134
+                name_file(5,"FRACTAL"); label(56,87,"Choose an unused"); key("Return")
+                action(1); xaos_picture(160)
+                action(2); pick_row(" VIEW.TXT"); xaos_picture(80)
+                action(2); pick_row(" BAD.TXT"); label(56,87,"Invalid document")
+                key("Return"); xaos_picture(80)
+                key("equal"); action(3)
+                wait_for(lambda _:view.read_bytes()==b"XAOS\n-2048\n0\n40\n",
+                         "Save did not preserve the reopened view's path")
+                assert exported.read_bytes()==raw and bad.read_bytes().endswith(b"32768\n")
+                key("Escape"); title("SD:/GBENCH"); at(64,40); double_click(); title("SD:")
+                def exported_cell(s):
+                    return next(((x,y) for y in (64,108,152) for x in (48,124,200)
+                                 if label_matches(s,font,x,y,"FRACTAL.PIC",blue=True)),None)
+                x,y=exported_cell(wait_for(exported_cell,"export missing from Files"))
+                at(x+16,y-24); double_click()
+                wait_for(lambda s:label_matches(s,font,40,20,"FRACTAL.PIC",True) and
+                         preview_matches(s,raw,(x+16,y-24)), "exported PIC did not reopen")
+                # Decode all packed pixels, independently from the preview renderer.
+                rgb=((0,0,170),(255,255,255),(0,0,0),(255,0,0))
+                assert bytes(c for b in raw[14:] for i in (3,2,1,0)
+                             for c in rgb[((b>>(4+i))&1)|(((b>>i)&1)<<1)])==xaos_pixels(80)
+                key("Escape"); title("SD:"); key("Escape")
+                bad.unlink(); view.unlink(); exported.unlink()
+                at(16,16); same_screen(desktop)
+                print("Agon XAOS: normal card, zoom, definition round trip, invalid Open, PIC export and preview OK",flush=True)
+            if os.environ.get("AGON_XAOS_FILES_ONLY"):
+                xaos_files()
+                return
+            def xaos():
+                # Booted desktop, pointer at 16,16. The real diagnostic guest
+                # is opened through Files and is not auto-started by the card.
+                key("f"); title("SD:")
+                move_keys("Right",6); move_keys("Down",3); double_click()
+                title("SD:/GBENCH"); filename(200,108,"XAOS.APP")
+                move_keys("Right",20); move_keys("Down",6); double_click()
+                def window():
+                    wait_for(lambda s:label_matches(s,font,144,99,"XAOS",True),"no XAOS window")
+                def complete():
+                    return lambda s:label_matches(s,font,200,0,"Task 0038")
+                window()
+                key("ctrl+w"); title("SD:/GBENCH")
+                shot=wait_for(lambda s:label_matches(s,font,200,0,"Task ") and
+                              not complete()(s),"no partial background render")
+                region=lambda s:s.resize((320,240),Image.Resampling.NEAREST).crop((230,0,254,8)).tobytes()
+                first=region(shot)
+                key("v")
+                wait_for(lambda s:region(s)!=first and label_matches(s,font,36,19,"SD:/GBENCH",True),
+                         "render did not advance while Files had focus")
+                key("v")
+                wait_for(complete(),"background render did not finish",90)
+                key("ctrl+w"); window(); xaos_picture(160)
+                key("equal"); xaos_picture(80)
+                key("r")
+                wait_for(lambda s:label_matches(s,font,200,0,"Task ") and not complete()(s),
+                         "reset did not start a new job")
+                key("Escape"); label(116,92,"Save"); key("2"); title("SD:/GBENCH")
+                wait_for(lambda s:not label_matches(s,font,200,0,"Task "),"worker survived close")
+                double_click(); window()
+                wait_for(complete(),"reopened XAOS did not complete",90); xaos_picture(160)
+                key("Escape"); title("SD:/GBENCH"); key("Escape"); key("Escape")
+                time.sleep(.5); launch(); wait_wallpaper()
+                print("Agon XAOS: background rows, exact home/zoom pixels, cancel, reopen and MOS relaunch OK",flush=True)
+            if os.environ.get("AGON_XAOS_ONLY"):
+                xaos()
+                return
+            def xaos_busy():
+                key("f"); title("SD:")
+                at(216,40); double_click(); filename(164,116,"Worker never yields")
+                key("ctrl+w"); title("SD:"); at(64,40); double_click(); title("SD:/GBENCH")
+                at(224,88); double_click()
+                wait_for(lambda s:label_matches(s,font,144,99,"XAOS",True),"no fallback XAOS")
+                xaos_picture(160,120)
+                key("Escape"); title("SD:/GBENCH")
+                label(200,0,"Task ")  # closing XAOS must not release another guest's vector
+                key("ctrl+w"); filename(164,116,"Worker never yields")
+                key("Escape"); title("SD:/GBENCH"); key("Escape"); key("Escape")
+                time.sleep(.5); launch(); wait_wallpaper()
+                print("Agon XAOS: completed with a busy timer and preserved its owner",flush=True)
+            if os.environ.get("AGON_TASK_ONLY"):
+                note=sd/"NOTES.TXT"
+                note.write_bytes(b"Testing")
+                for attempt in range(2):
+                    key("f"); title("SD:")
+                    filename(200,64,"TASKDEMO.APP")
+                    move_keys("Right",25); move_keys("Down",3); double_click()
+                    filename(164,116,"Worker never yields")
+                    key("ctrl+w"); title("SD:")
+                    move_keys("Left",19); move_keys("Down",6); double_click()
+                    filename(16,30,"Testing")
+                    label(200,0,"Task ")
+                    def counter(s):
+                        return s.crop((230*s.width//320,0,254*s.width//320,8*s.height//240)).tobytes()
+                    first=counter(screen())
+                    run("xdotool","type","--delay","100"," background")
+                    filename(16,30,"Testing background")
+                    wait_for(lambda s: label_matches(s,font,200,0,"Task ") and counter(s)!=first,
+                             "timer did not preempt the worker while editing")
+                    key("ctrl+w"); filename(164,116,"Worker never yields"); key("Escape")
+                    filename(16,30,"Testing background")
+                    wait_for(lambda s:not label_matches(s,font,200,0,"Task "),"task status not removed")
+                    key("Escape"); label(116,92,"Save"); key("2"); title("SD:")
+                    key("Escape"); key("Escape"); time.sleep(.5)
+                    if attempt==0:
+                        launch(); wait_wallpaper()
+                print("Agon diagnostic: timer-preempted worker, foreground editing, stop, MOS relaunch OK")
+                launch(); wait_wallpaper(); xaos_busy(); xaos()
+                return
+            def file_writes():
+                src=sd/"AAA"; src.mkdir()
+                payload=bytes(range(256))*512
+                (src/"SAMPLE.TXT").write_bytes(payload)
+                (src/"ZERO.TXT").touch()
+                dst=sd/"BBB"
+                # Pointer starts at (16,16); both views retain their scroll
+                # and path when focus is cycled or the other view mutates.
+                key("f"); title("SD:")
+                key("o")
+                def second(path):
+                    wait_for(lambda s:label_matches(s,font,48,27,"SD:"+path,True),
+                             f"second Files should be in {path}")
+                second("")
+                key("n"); label(80,85,"New folder name")
+                run("xdotool","type","--delay","100","BBB"); key("Return")
+                wait_for(lambda _:dst.is_dir(),"New folder did not create BBB")
+                filename(136,72,"BBB"); key("Escape")
+                filename(124,64,"BBB")  # closing must not restore a stale root
+                move_keys("Right",6); move_keys("Down",3); double_click()
+                title("SD:/AAA"); filename(124,64,"SAMPLE.TXT")
+                move_keys("Right",10); key("space"); key("c")
+                key("m"); label(44,10,"New window"); key("1")
+                second("")
+                filename(136,72,"BBB"); double_click(); second("/BBB")
+                stage=dst/"GBCOPY.TMP"
+                stage.write_bytes(b"unrelated")
+                key("p"); label(56,87,"Cannot create copy temp file"); key("Return")
+                assert stage.read_bytes()==b"unrelated"
+                stage.unlink()
+                key("p")
+                copied=dst/"SAMPLE.TXT"
+                wait_for(lambda _:copied.exists(),"Copy did not finish",25)
+                assert copied.read_bytes()==payload and not stage.exists()
+                filename(136,72,"SAMPLE.TXT")
+                key("p"); label(56,87,"Destination not free"); key("Return")
+                key("space"); key("r"); label(80,85,"Rename to")
+                run("xdotool","type","--delay","100","SECOND.TXT"); key("Return")
+                filename(136,72,"SECOND.TXT")
+                assert (dst/"SECOND.TXT").read_bytes()==payload and not copied.exists()
+                key("p")
+                wait_for(lambda _:stage.exists() and stage.stat().st_size>0,
+                         "no partial copy to cancel")
+                key("Escape")
+                wait_for(lambda _:not stage.exists(),"cancel leaked a partial file")
+                assert not copied.exists() and (src/"SAMPLE.TXT").read_bytes()==payload
+                second("/BBB"); key("ctrl+w"); title("SD:/AAA")
+                move_keys("Right",10); key("space"); key("c")
+                key("ctrl+w"); second("/BBB"); key("p")
+                wait_for(lambda _:(dst/"ZERO.TXT").exists(),"empty file did not copy")
+                assert not (dst/"ZERO.TXT").read_bytes()
+                key("Escape"); title("SD:/AAA"); key("Escape")
+                move_keys("Left",40); move_keys("Up",30)
+                move_keys("Right",2); move_keys("Down",2)
+                same_screen(desktop)
+                shutil.rmtree(src); shutil.rmtree(dst)
+            if os.environ.get("AGON_FILES_ONLY"):
+                file_writes()
+                print("Agon Files: two directories, mkdir, rename, copy, collision, cancel and empty file OK")
+                return
+            def documents():
+                # This is the emulator's private SD copy. Start with a real
+                # file and inspect the resulting bytes from outside the guest.
+                source=sd/"NOTES.TXT"
+                source.write_bytes(b"Board note")
+                def note_title(name):
+                    wait_for(lambda s: label_matches(s,font,12,17,name,True),
+                             f"Notepad title did not update to {name!r}")
+                def file_action(n):
+                    key("shift+space"); label(44,58,"Exit"); key(str(n))
+                key("f")
+                title("SD:")
+                filename(200,64,"NOTES.TXT")
+                move_keys("Right",25)
+                move_keys("Down",3)
+                double_click()
+                filename(16,30,"Board note")
+                run("xdotool","type","--delay","110","sx")
+                filename(16,30,"Board notesx")
+                key("BackSpace")
+                filename(16,30,"Board notes")
+                # Exposed right edge of Files. Raise it, then re-focus the
+                # exposed left edge of Notepad without losing its unsaved edit.
+                move_keys("Right",8)
+                key("shift+space")
+                title("SD:")
+                move_keys("Left",35)
+                move_keys("Right",2)
+                key("space")
+                filename(16,30,"Board notes")
+                move_keys("Up",6)
+                move_keys("Right",4)  # x48: File
+                # A stationary pointer over File must not turn typed spaces
+                # into clicks. Conversely Shift+Space must open that menu.
+                key("space"); key("space"); key("x")
+                edited="Board notes  x"
+                filename(16,30,edited)
+                key("shift+space")
+                label(44,46,"Save As")
+                key("4")
+                label(56,41,"Save in folder"); key("Return")
+                label(80,85,"Save as:")
+                run("xdotool","type","--delay","110","COPY.TXT")
+                label(88,99,"COPY.TXT")
+                key("Return")
+                dest=sd/"COPY.TXT"
+                try:
+                    wait_for(lambda _: dest.exists() and dest.read_bytes()==edited.encode(),
+                             "Save As did not write the edited file")
+                except AssertionError:
+                    print("Scratch card after Save As:",[(p.name,p.stat().st_size)
+                          for p in sd.iterdir() if p.is_file()],flush=True)
+                    raise
+                assert source.read_bytes()==b"Board note"
+                note_title("COPY.TXT")
+                def save():
+                    key("shift+space"); label(44,46,"Save As"); key("3")
+                run("xdotool","type","--delay","110","2")
+                filename(16,30,edited+"2")
+                backup=sd/"GBSAVE.BAK"
+                backup.write_bytes(b"keep recovery")
+                save()
+                label(56,87,"Not saved")
+                assert dest.read_bytes()==edited.encode() and backup.read_bytes()==b"keep recovery"
+                key("Return"); backup.unlink()
+                save()
+                wait_for(lambda _:dest.read_bytes()==(edited+"2").encode(),"overwrite did not persist")
+                assert not backup.exists() and not (sd/"GBSAVE.TMP").exists()
+                key("ctrl+w")
+                title("SD:")
+                at(144,40); double_click(); title("SD:/PICS")
+                double_click()
+                picture=(sd/"PICS/1984.PIC").read_bytes()
+                move_keys("Up",8)  # keep the pointer outside the pixel comparison
+                wait_for(lambda s: label_matches(s,font,40,20,"1984.PIC",True)
+                         and preview_matches(s,picture,(-8,-8)),
+                         "could not open a third guest")
+                key("ctrl+w")
+                filename(16,30,edited+"2")
+                key("Escape")
+                wait_for(lambda s: label_matches(s,font,40,20,"1984.PIC",True),
+                         "closing Notepad did not restore the picture")
+                key("Escape"); title("SD:/PICS"); key("Escape")
+                # Go all the way back to MOS. Neither the guest page nor a
+                # File Manager directory cache can supply this second read.
+                key("Escape"); time.sleep(.5); launch(); wait_wallpaper()
+                key("f"); title("SD:"); filename(200,64,"COPY.TXT")
+                at(224,40); double_click(); filename(16,30,edited+"2")
+                # File > New then plain Save: check the new name on the
+                # still-focused window, before any focus change or reopen.
+                at(48,0); filename(16,30,edited+"2")
+                key("shift+space"); label(44,46,"Save As")
+                move_keys("Down",2); key("space")  # ordinary click in the open menu: New
+                move_keys("Up",2)  # move the pointer sprite off the title glyphs
+                note_title("UNTITLED")
+                run("xdotool","type","--delay","110","two words")
+                filename(16,30,"two words")
+                save()
+                label(56,41,"Save in folder"); pick_row("[GBENCH]")
+                label(56,54,"/GBENCH"); key("Return")
+                label(80,85,"Save as:")
+                run("xdotool","type","--delay","110","NEW.TXT"); key("Return")
+                note_title("NEW.TXT")
+                new=sd/"GBENCH/NEW.TXT"
+                assert new.read_bytes()==b"two words" and not (sd/"NEW.TXT").exists()
+                file_action(2); label(56,54,"/GBENCH"); key("BackSpace")
+                pick_row(" COPY.TXT"); note_title("COPY.TXT"); filename(16,30,edited+"2")
+                file_action(4); pick_row("[GBENCH]"); key("Return")
+                label(80,85,"Save as:"); key("Escape")
+                key("x"); filename(16,30,"x"+edited)
+                file_action(5); label(116,92,"Save"); key("3")  # Cancel
+                filename(16,30,"x"+edited)
+                backup.write_bytes(b"keep recovery")
+                file_action(5); label(116,92,"Save"); key("1")
+                label(56,87,"Not saved"); key("Return"); filename(16,30,"x"+edited)
+                assert dest.read_bytes()==(edited+"2").encode()
+                assert backup.read_bytes()==b"keep recovery"
+                backup.unlink()
+                file_action(5); label(116,92,"Save"); key("1")
+                title("SD:")
+                assert dest.read_bytes()==("x"+edited+"2").encode()
+                assert new.read_bytes()==b"two words"
+                at(224,40); double_click(); filename(16,30,"x"+edited)
+                at(48,0); file_action(5); label(116,92,"Exit program"); key("2")
+                key("z"); file_action(5); label(116,92,"Save"); key("2")
+                title("SD:"); assert dest.read_bytes()==("x"+edited+"2").encode()
+                key("Escape")
+                source.unlink(); dest.unlink(); new.unlink()
+                at(16,16)
+                same_screen(desktop)
+            if os.environ.get("AGON_DOCUMENT_ONLY"):
+                documents()
+                print("Agon: three-window focus, safe save/overwrite and reopen from MOS OK")
+                return
             def accessories():
                 capture=os.environ.get("AGON_CAPTURE_DIR")
                 if capture: Path(capture).mkdir(parents=True,exist_ok=True)
@@ -373,6 +738,9 @@ def smoke(card, host):
                 accessories()
                 print("Agon System menu, Settings, RTC and screensavers OK")
                 return
+            xaos_files()
+            file_writes()
+            documents()
             tap_arrow("Right")
             wait_for(lambda s: pointer_at(s,17,16), "Right tap was not one pixel")
             tap_arrow("Left")
@@ -451,7 +819,7 @@ def smoke(card, host):
             double_click()
             title("SD:/GBENCH")
             icon(20, 144, 31)
-            filename(124, 108, "DEFAULT.IST")
+            filename(200, 152, "DEFAULT.IST")
             # These draws are submitted consecutively. Check the whole set in
             # one frame, not just the last glyph to reach the display.
             def folder_frame(s):
@@ -460,8 +828,12 @@ def smoke(card, host):
                         and all(label_matches(s, font, x, y, name, blue=True)
                                 for x, y, name in ((124, 64, "CALC.APP"),
                                                    (200, 64, "FILEMGR.APP"),
-                                                   (48, 108, "PICVIEW.APP"),
-                                                   (124, 108, "DEFAULT.IST"))))
+                                                   (48, 108, "NOTEPAD.APP"),
+                                                   (124, 108, "PICVIEW.APP"),
+                                                   (200, 108, "XAOS.APP"),
+                                                   (48, 152, "WELCOME.TXT"),
+                                                   (124, 152, "AGON.CAT"),
+                                                   (200, 152, "DEFAULT.IST"))))
             wait_for(folder_frame, "corrupt File Manager title, controls or directory labels")
             capture = os.environ.get("AGON_CAPTURE_DIR")
             if capture:
@@ -488,8 +860,7 @@ def smoke(card, host):
             manager_bytes = manager.read_bytes()
             manager.write_bytes(manager_bytes[:-1])
             key("f")
-            wait_for(lambda s: wallpaper_matches(s, pic) and
-                     s.tobytes() != desktop.tobytes(), "missing File Manager error")
+            wait_for(error_footer, "missing File Manager error")
             manager.write_bytes(manager_bytes)
             key("f")
             title("SD:")
@@ -642,8 +1013,7 @@ def smoke(card, host):
                 else:
                     guest.write_bytes(payload)
                 key("c")
-                wait_for(lambda s: wallpaper_matches(s, pic) and
-                         s.tobytes() != desktop.tobytes(), "no guest load error")
+                wait_for(error_footer, "no guest load error")
                 guest.write_bytes(calc)
                 key("c")
                 calculator("0")

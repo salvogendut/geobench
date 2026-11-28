@@ -13,7 +13,7 @@ POINTER_ID      equ #4744
 PREEMPTIVE      equ 0
                 include "../lowram.inc"
                 include "input.inc"
-                include "../../build/agon/calc.inc"
+                include "../../build/agon/ist.inc"
 
                 org 0
                 jp start
@@ -57,6 +57,10 @@ start
                 ld hl,system_image   ; the splash upload has released #a000
                 ld de,AG_SYSTEM
                 ld bc,system_end-system_image
+                ldir
+                ld hl,probe_image
+                ld de,AG_PROBE
+                ld bc,probe_end-probe_image
                 ldir
                 call input_init
                 xor a
@@ -194,15 +198,13 @@ open_manager    call load_icons
                 or a
                 jr z,manager_error
                 ld hl,manager_path
-                ld de,APP_BASE
-                ld bc,FM_SIZE
-                ld ix,FM_CRC
-                call read_checked
+                call AG_SYSTEM+12
+                cp 1
                 jr nz,manager_error
                 call AG_FILES+3      ; new File Manager starts at the MOS root
-                ld a,2
+                ld a,3
                 ld (APP_NPAGES),a
-                dec a
+                ld a,1
                 ld (WM_NWIN),a
                 ld (AG_FILEMODE),a
                 call GB_INIT
@@ -214,6 +216,7 @@ manager_error   ld hl,fm_error
                 ld bc,fm_error_end-fm_error
                 jp paint
 leave
+                call AG_PROBE+9
                 call AG_FILES+33     ; discard bitmap buffers owned by this run
                 ld hl,cleanup
                 ld bc,cleanup_end-cleanup
@@ -268,6 +271,7 @@ read_exact      push bc
                 ld a,#0a              ; mos_fopen
                 call mos
                 pop hl
+                db LIL,#11,0,0,0     ; LD.LIL DE,0 before the 16-bit pop
                 pop de
                 or a
                 jr z,read_missing
@@ -288,14 +292,13 @@ read_missing    ld a,1
 
 ; CRC-16/CCITT-FALSE. This is a compatibility check, not a security boundary.
 read_preview    ld hl,preview_path
-                ld de,APP_BASE
-                ld bc,PREVIEW_SIZE
-                ld ix,PREVIEW_CRC
-                jr read_checked
+                call AG_SYSTEM+12
+                cp 2
+                ret
 read_calc       ld hl,calc_path
-read_calc_at    ld de,APP_BASE
-                ld bc,CALC_SIZE
-                ld ix,CALC_CRC
+read_calc_at    call AG_SYSTEM+12
+                or a
+                ret
 read_checked    push ix
                 push bc
                 push de
@@ -444,16 +447,21 @@ files_image     incbin "../../build/agon/files.bin"
 files_end
 system_image    incbin "../../build/agon/system.bin"
 system_end
+probe_image
+                ifdef AGON_TASK_PROBE
+                incbin "../../build/agon/task_probe.bin"
+                else
+                incbin "../../build/agon/worker.bin"
+                endif
+probe_end
+                assert probe_end < GB_KERNEL
 ; The bootstrap is live below the app-visible low-RAM contracts. The temporary
 ; runtime image is copied before those contracts or the PIC scratch are used.
                 assert runtime_image < #1000
                 assert system_end < GB_KERNEL
-                assert AG_SYSTEM+system_end-system_image <= #d800
+                assert AG_SYSTEM+system_end-system_image <= #e480
                 assert AG_FILES+files_end-files_image <= #a000
-                assert CALC_SIZE <= APP_LOAD_MAX
-                assert FM_SIZE <= APP_LOAD_MAX
-                assert PREVIEW_SIZE <= APP_LOAD_MAX
-                assert #2000+IST_SIZE < #3900
+                assert #2000+IST_SIZE <= #3500 ; document path and MOS FILINFO follow
 picture         equ #a000
 row_buf         equ picture+PIC_SIZE+1
                 assert GB_KERNEL+runtime_end-runtime_image <= AG_FILES

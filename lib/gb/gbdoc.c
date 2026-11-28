@@ -12,6 +12,12 @@
  * first; in on_frame call gb_doc_frame() and repaint your window if it returns 1.
  */
 #include "gb.h"
+#ifdef GB_AGON
+#include "gbagon.h"
+#include <string.h>
+static unsigned char saved_ok;
+static void do_saveas(void);
+#endif
 
 #define DOC_MAXTITLES 4              /* File + up to 3 app titles */
 
@@ -59,7 +65,11 @@ static unsigned char   g_def[1 + DOC_MAXTITLES * 9];   /* MENU_DEF: count, {col,
  * read-only app (on_open only) shows just "Load", and a document-less app (the
  * File Manager) shows no File title at all (#142). file_act maps each visible
  * item back to its action. */
+#ifdef GB_AGON
+static const char     *file_items[7]; /* five optional actions, Exit, terminator */
+#else
 static const char     *file_items[6];
+#endif
 static unsigned char   file_act[6];   /* per visible item: 0 New,1 Load,2 Save,3 Save As,4 Export */
 static unsigned char   file_nf;       /* number of visible File items */
 static void            file_action(unsigned char sel);
@@ -139,10 +149,20 @@ void gb_doc(const gb_doc_t *d)
     {                                 /* build the File menu from the hooks present */
         unsigned char nf = 0;
         if (d->on_new)  { file_items[nf] = "New";     file_act[nf++] = 0; }
-        if (d->on_open) { file_items[nf] = "Load";    file_act[nf++] = 1; }
+        if (d->on_open) {
+#ifdef GB_AGON
+            file_items[nf] = "Open";
+#else
+            file_items[nf] = "Load";
+#endif
+            file_act[nf++] = 1;
+        }
         if (d->on_save) { file_items[nf] = "Save";    file_act[nf++] = 2;
                           file_items[nf] = "Save As"; file_act[nf++] = 3; }
         if (d->export_label) { file_items[nf] = d->export_label; file_act[nf++] = 4; }
+#ifdef GB_AGON
+        if (nf) { file_items[nf] = "Exit"; file_act[nf++] = 5; }
+#endif
         file_items[nf] = 0; file_nf = nf;
         if (nf) {                     /* a document-less app gets no File title at all */
             g_label[g_ntitles]   = "File";
@@ -457,7 +477,14 @@ static unsigned char confirm_save(void)
     unsigned char sel;
     if (!g_dirty) return 1;
     sel = gb_popup(28, 90, confirm_items, 3);
-    if (sel == 0) { do_save(); return 1; }
+    if (sel == 0) {
+        do_save();
+#ifdef GB_AGON
+        return !g_dirty;
+#else
+        return 1;
+#endif
+    }
     if (sel == 1) return 1;
     return 0;
 #endif
@@ -520,6 +547,10 @@ static void do_load(void)
 {
     char nm[11];
     unsigned int len;
+#ifdef GB_AGON
+    char old[11];
+    memcpy(old,g_name,11);
+#endif
     if (!(g_doc->flags & GB_DOC_LOAD_NOCONFIRM) && !confirm_save()) return;
     if (!gb_pickfile(nm, g_doc->exts)) return;
     set_name(nm);
@@ -533,7 +564,13 @@ static void do_load(void)
 #ifdef GBUI_APPICON_PICKER
     len = gb_doc_stream_load();
 #else
+#ifdef GB_AGON
+    gb_agon_validate_next(g_doc->validate);
+#endif
     len = gb_fs_load(g_doc->buf, g_doc->bufmax);   /* targets the navigated directory */
+#endif
+#ifdef GB_AGON
+    if (len==0xffff) { set_name(old); return; }
 #endif
     if (g_doc->on_open) g_doc->on_open(len);
     g_dirty = 0;
@@ -549,6 +586,9 @@ static unsigned char do_save(unsigned char after)
 #else
 static void do_save(void)
 {
+#ifdef GB_AGON
+    if (g_name[8]==' ') { saved_ok=0; do_saveas(); return; }
+#endif
     unsigned int n  = g_doc->on_save();
 #ifdef GBUI_APPICON_PICKER
     unsigned char ok = gb_doc_stream_save(n);
@@ -557,12 +597,19 @@ static void do_save(void)
 #endif
     if (g_doc->on_saved) g_doc->on_saved();          /* restore buf if on_save transformed it */
     if (ok) g_dirty = 0;
+#ifdef GB_AGON
+    saved_ok=ok;
+#endif
 }
 #endif
 
 static char namebuf[16];
 static void do_saveas(void)
 {
+#ifdef GB_AGON
+    char old[11];
+    memcpy(old,g_name,11);
+#endif
 #ifdef GBDOC_BOUNDED_IO
     if (gb_drop_claimed()) {
         gb_alert("Storage busy", "Try again shortly.");
@@ -577,6 +624,9 @@ static void do_saveas(void)
     do_save(DOC_AFTER_NONE);                       /* writes into the navigated dir */
 #else
     do_save();
+#ifdef GB_AGON
+    if (!saved_ok) set_name(old);
+#endif
 #endif
 }
 #endif
@@ -586,6 +636,14 @@ static void file_action(unsigned char sel)
     unsigned char a;
     if (sel >= file_nf) return;
     a = file_act[sel];
+#ifdef GB_AGON
+    if (a==5) {
+        static const char *const choices[]={"Exit program","Cancel"};
+        if (g_dirty ? gb_doc_close() : gb_popup(28,90,choices,2)==0)
+            gb_wm_close();
+        return;
+    }
+#endif
     if      (a == 0) do_new();
     else if (a == 1) do_load();
 #ifndef GBDOC_RO

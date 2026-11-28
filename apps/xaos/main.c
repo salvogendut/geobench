@@ -28,6 +28,10 @@
 #define WIN_H     (TITLE_H + CANVAS_H + 14)        /* title + canvas + control strip */
 
 #define MAXITER   20
+#define HOME_CX   (-2048)
+#define HOME_CY   0
+#define HOME_STEP 160
+#ifndef GB_AGON
 
 static unsigned char win_x = DEF_X, win_y = DEF_Y;
 static unsigned char winw = WIN_W, winh = WIN_H;   /* live window size (Fullscreen, #142) */
@@ -46,9 +50,6 @@ static unsigned char picbuf[PIC_LEN];
 static const unsigned char pic_inks[4] = { 1, 26, 0, 6 };   /* GEOBENCH palette inks */
 
 /* view: centre (cx0,cy0) and per-pixel step, all Q4.12. Home = the whole set. */
-#define HOME_CX   (-2048)               /* -0.5 */
-#define HOME_CY   0
-#define HOME_STEP 160                   /* ~0.039/px -> ~3.1 wide, square pixels */
 static int cx0 = HOME_CX, cy0 = HOME_CY, step = HOME_STEP;
 
 /* The document is the fractal DEFINITION - a small .TXT of the view maths (Save/Load);
@@ -61,6 +62,7 @@ static char name83[11];                /* 8.3 scratch for the PIC export name */
 static char fbase[14];                 /* title: NAME.EXT from gb_doc_name() */
 static char wtitle[18];                /* fbase + " *" when modified */
 static char namebuf[16];               /* gb_prompt target for Save as PIC */
+#endif
 
 /* ---- Q4.12 signed multiply: fr = (fa * fb) >> 12 (hand-written, the hot op) ---- */
 static int fa, fb, fr;
@@ -159,6 +161,19 @@ static unsigned char set_pixel(unsigned char b, unsigned char i, unsigned char p
     return b;
 }
 
+static char *put_int(char *p, int v)
+{
+    char tmp[6]; unsigned char n = 0; unsigned int u = (unsigned int)v;
+    if (v < 0) { *p++ = '-'; u = 0u - u; }
+    do { tmp[n++] = (char)('0' + u % 10); u /= 10; } while (u);
+    while (n) *p++ = tmp[--n];
+    *p++ = '\n';
+    return p;
+}
+
+#ifdef GB_AGON
+#include "agon.h"
+#else
 #if defined(GB_MSX2) || defined(GB_PCW)
 static unsigned char native_row[CANVAS_WB];
 
@@ -396,15 +411,6 @@ static void write_pic(void)            /* v2 header + the canvas -> the open fil
     gb_fs_save((char *)picbuf, PIC_LEN);
 }
 /* ---- the fractal DEFINITION as a .TXT: "XAOS\n<cx0>\n<cy0>\n<step>\n" ---------- */
-static char *put_int(char *p, int v)   /* signed decimal + newline */
-{
-    char tmp[6]; unsigned char n = 0; unsigned int u;
-    if (v < 0) { *p++ = '-'; u = (unsigned int)(0 - v); } else u = (unsigned int)v;
-    do { tmp[n++] = (char)('0' + u % 10); u /= 10; } while (u);
-    while (n) *p++ = tmp[--n];
-    *p++ = '\n';
-    return p;
-}
 static int get_int(char **pp)          /* parse a signed int, advance past its line */
 {
     char *p = *pp; int v = 0; unsigned char neg = 0;
@@ -604,3 +610,4 @@ void main(void)
     gb_task_enable();                                  /* worker starts only after initial paint */
 #endif
 }
+#endif /* GB_AGON */

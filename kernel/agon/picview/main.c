@@ -15,7 +15,7 @@ static const u8 *lookup[WIDTH];
 static u8 input[2048], output[WIDTH];
 static char title[34];
 static const u8 extras[] = {18,2,24,8,20,15,16,11,21,5,13,22};
-static const u8 clear[] = {23,0,0xa0,ID_LO,ID_HI,2};
+static u8 clear[] = {23,0,0xa0,ID_LO,ID_HI,2};
 static u8 append[] = {23,0,0xa0,ID_LO,ID_HI,0,0,0};
 static u8 define[] = {23,0,0xa0,ID_LO,ID_HI,14,23,27,0x20,ID_LO,ID_HI,
                       23,27,0x21,0,0,0,0,1};
@@ -49,6 +49,9 @@ static unsigned read_file(void *dst, unsigned size) __naked
 {
     (void)dst; (void)size;
 __asm
+    push de
+    .db 0x5b,0x11,0,0,0
+    pop de
     ld a,(_handle)
     ld c,a
     ld a,#0x1a
@@ -181,6 +184,8 @@ static const gb_mwin_t window = {9,17,62,166,28,66,event,title};
 void main(void)
 {
     const char *path = DOC_PATH, *name = strrchr(path,'/');
+    u8 id = ID_LO + *(volatile u8 *)0x17e6; /* one VDP bitmap per live guest */
+    clear[3]=append[3]=define[3]=define[9]=plot[3]=id;
     strncpy(title,name ? name+1 : path,sizeof(title)-1);
     title[sizeof(title)-1] = 0;
     gb_wm_managed(&window);

@@ -1,5 +1,4 @@
-/* Read-only MOS directory browser. Calculator owns 4000h..7fffh while
- * running; the browser's code and selection both remain outside that page. */
+/* MOS directory adapter and standalone long-name browser. */
 #include <string.h>
 #include "gb.h"
 
@@ -17,12 +16,15 @@ typedef struct {
     u8 dir[256];
     FileInfo info;
     char path[NAME_BYTES], target[NAME_BYTES], label[40];
-    char names[ROWS][NAME_BYTES];
     u8 attrs[ROWS], count, row, more;
     unsigned long offset;
 } Browser;
-static __at (0xe000) Browser b;
-typedef char browser_fits[(sizeof(Browser) <= 0x1000) ? 1 : -1];
+static __at (0xeb00) Browser b;
+typedef char browser_fits[(sizeof(Browser) <= 0x500) ? 1 : -1];
+/* Only the standalone B browser uses these rows. Re-read them after its
+ * child exits; the managed Files app owns this page while it runs. */
+static __at (0x4000) char names[ROWS][NAME_BYTES];
+extern char *managed_path(void);
 
 extern u8 dir_open(void *dir, const char *path);
 extern u8 dir_read(void *dir, FileInfo *entry);
@@ -45,7 +47,7 @@ static u8 read_page(void)
         if ((b.info.attr & 8) || !strcmp(name, ".") || !strcmp(name, "..")) continue;
         if (skip) { --skip; continue; }
         if (b.count == ROWS) { b.more = 1; break; }
-        strcpy(b.names[b.count], name);
+        strcpy(names[b.count], name);
         b.attrs[b.count++] = b.info.attr;
     }
     if (dir_close(b.dir) || error) { b.count = b.more = 0; return 0; }
@@ -106,7 +108,7 @@ char *fm_first(void)
 {
     fm_end();
     memset(b.dir, 0, sizeof(b.dir));
-    if (dir_open(b.dir, b.path)) return 0;
+    if (dir_open(b.dir, managed_path())) return 0;
     fs.opened = 1;
     return fm_next();
 }
@@ -116,31 +118,39 @@ u8 fm_isdir(void) { return (b.info.attr & 16) != 0; }
 
 static char *current_path(void)
 {
-    unsigned len = strlen(b.path);
+    char *dir=managed_path();
+    unsigned len = strlen(dir);
     if (!fs.opened || len + (len != 1) + strlen(b.info.name) >= sizeof(b.target)) return 0;
-    strcpy(b.target, b.path);
+    strcpy(b.target, dir);
     if (len != 1) strcat(b.target, "/");
     return strcat(b.target, b.info.name);
 }
 
 void fm_down(void)
 {
-    if (fm_isdir() && current_path()) strcpy(b.path, b.target);
+    if (fm_isdir() && current_path()) strcpy(managed_path(), b.target);
     fm_end();
 }
 
 void fm_up(void)
 {
-    char *p = strrchr(b.path, '/');
+    char *dir=managed_path(), *p = strrchr(dir, '/');
     fm_end();
-    if (p == b.path) ++p;            /* keep the root slash */
+    if (p == dir) ++p;            /* keep the root slash */
     if (p) *p = 0;
+}
+
+char *fm_selected(void)
+{
+    char *p=current_path();
+    fm_end();
+    return p;
 }
 
 char *fm_target(const char *raw)
 {
     char *p = 0;
-    if (fs.opened && !memcmp(fs.raw, raw, 11) && !memcmp(raw, "CALC    APP", 11))
+    if (fs.opened && !fm_isdir() && !memcmp(fs.raw, raw, 11) && !memcmp(raw+8, "APP", 3))
         p = current_path();
     fm_end();
     return p;
@@ -149,8 +159,9 @@ char *fm_target(const char *raw)
 char *fm_document(const char *handler)
 {
     char *p = 0;
-    if (fs.opened && !fm_isdir() && !memcmp(handler, "VIEWER  APP", 11)
-        && !memcmp(fs.raw+8, "PIC", 3)) p = current_path();
+    if (fs.opened && !fm_isdir() &&
+        ((!memcmp(handler,"VIEWER  APP",11) && !memcmp(fs.raw+8,"PIC",3)) ||
+         (!memcmp(handler,"NOTEPAD APP",11) && !memcmp(fs.raw+8,"TXT",3)))) p=current_path();
     fm_end();
     return p;
 }
@@ -179,7 +190,7 @@ static void draw_row(u8 i)
     u8 selected = i == b.row;
     const char *kind = (b.attrs[i] & 16) ? "DIR" : "";
     gb_fill(10, y, 60, 10, selected ? 2 : 1);
-    clipped(b.names[i], 30);
+    clipped(names[i], 30);
     if (selected) {
         gb_textrev(11, y+1, b.label);
         gb_textrev(64, y+1, kind);
@@ -241,7 +252,7 @@ const char *browse(u8 mode)
         strcpy(b.path, "/");
         b.row = b.offset = 0;
         page();
-    } else draw(mode == 2 ? "CALC.APP missing or invalid" : 0);
+    } else { page(); if(mode==2) status("CALC.APP missing or invalid"); }
     for (;;) {
         u8 key = file_key();
         if (key == ' ') {
@@ -276,7 +287,7 @@ const char *browse(u8 mode)
             b.row = b.offset = 0;
             page();
         } else if (key == 13 && b.count) {
-            const char *name = b.names[b.row];
+            const char *name = names[b.row];
             u8 sep = b.path[1] != 0;
             if (strlen(b.path) + sep + strlen(name) >= sizeof(b.target)) {
                 status("Path too long");
@@ -295,7 +306,7 @@ const char *browse(u8 mode)
             u8 i = b.row, n = b.count;
             do {
                 if (++i == b.count) i = 0;
-                if (upper(*b.names[i]) == upper(key)) { select_row(i); break; }
+                if (upper(*names[i]) == upper(key)) { select_row(i); break; }
             } while (--n);
         }
     }

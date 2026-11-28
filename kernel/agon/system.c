@@ -22,6 +22,7 @@ extern void agon_squares_start(unsigned), agon_squares_tick(void);
 extern void agon_clock_draw(u8), agon_clock_tick(void);
 extern u8 saver_screen_save(void);
 extern void saver_screen_restore(void);
+extern u8 ag_modal;
 
 static const char path[] = "/GBENCH/AGON.CFG";
 static const unsigned delays[] = {0, 1500, 6000, 12000, 30000};
@@ -173,8 +174,10 @@ static void setting(u8 action)
 
 void sys_init(void)
 {
+    extern void ag_files_init(void);
+    ag_files_init();
     depth=page=valid_time=0;
-    first_event=1; activity=now=0; moved=motion=0;
+    ag_modal=0; first_event=1; activity=now=0; moved=motion=0;
     prefs.saver=prefs.seconds=0; prefs.timeout=3;
     config(0);
     gb_fill(0,0,80,8,1);
@@ -183,10 +186,17 @@ void sys_init(void)
     clock_read(1);
 }
 
+u8 sys_text_focus(void)
+{
+    return guest==3 && page==DESK && !ag_modal;
+}
+u8 sys_probe_visible(void) { return page==DESK && !ag_modal; }
+
 u8 sys_event(u8 key)
 {
     u8 motion_now=motion, changed=motion_now!=moved, hit, x, y;
     moved=motion_now;
+    if (ag_modal) { activity=now; return !key && ag_modal==2 ? 253 : key; }
     if (first_event) { first_event=0; activity=rtc_at=now; }
     if (page==SAVER) {
         if (key || changed) {
@@ -204,10 +214,11 @@ u8 sys_event(u8 key)
     }
     clock_read(0);
     if (page==CLOCK && valid_time) agon_clock_tick();
-    if (!key) return 0;
+    if (!key) return page==DESK && (guest==3 || guest==4 || guest==5) ? 253 : 0;
     x=gb_mx(); y=gb_my();
     if (page==DESK) {
         if (key!=' ' || y>=8) return key;
+        if ((guest==3 && x>=10 && x<28) || ((guest==1 || guest==5) && x>=10 && x<17)) return key;
         if (x<12 || x>=70) sys_open(x<12 ? 'M' : 'T');
     } else if (key==27) pop();
     else if (page==MENU) {
