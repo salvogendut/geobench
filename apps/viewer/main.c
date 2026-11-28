@@ -10,6 +10,9 @@
 #include "gb.h"
 #include <string.h>
 #include "zoom.h"
+#ifdef GB_AGON
+#include "agon_viewport.h"
+#endif
 
 #define VIEW_MAX  2560    /* ten maximum-width Screen-7 rows per buffered read */
 #ifdef GB_AGON
@@ -35,12 +38,17 @@ static const unsigned char windowed=0;
 #define ZOOM_STEP (ZOOM_W + 1)
 #define BODY_PAD  (TITLE_PAD + 2 + ZOOM_H)
 #define ZOOM_X    ((unsigned char)(win_x + win_w - GRIP_W - 2 - ZOOM_STEP - ZOOM_W))
-#define ZOOM_Y    ((unsigned char)(win_y + win_h - 1 - ZOOM_H))
+#define ZOOM_Y    ((gb_scan_t)(win_y + win_h - 1 - ZOOM_H))
 
 static char filebuf[VIEW_MAX];
-static unsigned char rowbuf[GB_COLS * 2];    /* one visible row, even in Screen 7 */
+#ifdef GB_AGON
+static unsigned char rowbuf[640/2];
+#else
+static unsigned char rowbuf[GB_COLS * 2];
+#endif    /* one visible row, even in Screen 7 */
 static unsigned int filen;
-static unsigned char win_x, win_y, win_w, win_h;   /* refreshed from the WM each draw */
+static unsigned char win_x, win_y, win_w;
+static gb_scan_t win_h;   /* refreshed from the WM each draw */
 static char vtitle[14];                            /* "NAME.EXT" - the WM draws it */
 static unsigned char opened;                       /* 0 -> the next frame sizes to a picture */
 static unsigned char loaded;                       /* 0 until the file is read (blank, no msg) */
@@ -73,8 +81,9 @@ static unsigned int scroll_x;                          /* left displayed four-pi
 static unsigned char zoom;
 static unsigned int pic_pixels, display_w, visible_src_h;
 static unsigned char tail_pixels;
-static unsigned char view_x, view_y, view_w, view_h, view_vsb, view_hsb;
-static unsigned char hbar_x, hbar_y, hbar_w;
+static unsigned char view_x, view_y, view_w, view_vsb, view_hsb;
+static unsigned char hbar_x, hbar_w;
+static gb_scan_t view_h, hbar_y;
 static unsigned char streamed;                         /* no bank: read visible source rows on demand */
 static unsigned char invalid_pic;                      /* malformed or unsupported .PIC */
 #define PIC_PAGE_K (*(volatile unsigned char *)0x130B) /* the kernel's single "active pic bank";
@@ -277,14 +286,14 @@ static void size_to_pic(void)   /* size the window to the picture, clamped on sc
 
 /* Keep vertical positions in source rows: a tall picture at 4x need not
    fit a 16-bit display coordinate. Horizontal positions fit at all scales. */
-static unsigned int source_height(unsigned char lines)
+static unsigned int source_height(gb_scan_t lines)
 {
     if (zoom == HALF) return (unsigned int)lines * 2;
     if (zoom == QUAD) return (lines + 3u) >> 2;
     if (zoom == DOUBLE) return (lines + 1u) >> 1;
     return lines;
 }
-static unsigned int display_height(unsigned int rows, unsigned char limit)
+static unsigned int display_height(unsigned int rows, gb_scan_t limit)
 {
     if (rows >= source_height(limit)) return limit;
     if (zoom == HALF) return (rows >> 1) + (rows & 1);
@@ -422,14 +431,15 @@ static void blit_pic(unsigned char x, unsigned char y, unsigned char w,
 #endif
 static void draw_pic(void)
 {
-    unsigned char rows, draw_w;
+    unsigned char draw_w;
+    gb_scan_t rows;
 #ifndef GB_AGON
     unsigned int src;
 #endif
     calc_view();
     if (!view_w || !view_h) return;
     draw_w = (display_w - scroll_x > view_w) ? view_w : (unsigned char)(display_w - scroll_x);
-    rows = (unsigned char)display_height(pic_h - scroll_y, view_h);
+    rows = (gb_scan_t)display_height(pic_h - scroll_y, view_h);
 #ifdef GB_AGON
     agon_view(draw_w, rows);
 #else
@@ -501,7 +511,7 @@ static void hsb_drag(void)
 
 static void zoom_button(unsigned char x, const char *label)
 {
-    unsigned char y = ZOOM_Y;
+    gb_scan_t y = ZOOM_Y;
     gb_fill(x, y, ZOOM_W, ZOOM_H, 1);
     /* A leading 6px space centres the glyph between the byte-wide edges. */
     gb_textbw(x, y + 4, label);
@@ -729,11 +739,11 @@ static void v_drag(void)
 /* A content press can operate a zoom button, scrollbar, or the resize grip. */
 static void v_click(void)
 {
-    unsigned char w = gb_wm_w(), h = gb_wm_h();
+    unsigned char w = gb_wm_w(); gb_scan_t h = gb_wm_h();
     win_x = gb_wm_x(); win_y = gb_wm_y(); win_w = w; win_h = h;   /* draw_pic/TX_Y0 read these */
     if (have_pic()) {
         if (*WM_FS) return;
-        if ((unsigned char)(gb_my() - ZOOM_Y) < ZOOM_H) {
+        if ((gb_scan_t)(gb_my() - ZOOM_Y) < ZOOM_H) {
             unsigned char dx = gb_mx() - ZOOM_X;
             if (dx < ZOOM_W || (unsigned char)(dx - ZOOM_STEP) < ZOOM_W) {
                 change_zoom(dx >= ZOOM_STEP);
@@ -744,13 +754,13 @@ static void v_click(void)
     }
     if (have_pic() && view_vsb && gb_mx() >= (unsigned char)(win_x + 1)
         && gb_mx() < (unsigned char)(win_x + 1 + SB_W)
-        && gb_my() >= TX_Y0 && gb_my() < (unsigned char)(TX_Y0 + view_h)) {
+        && gb_my() >= TX_Y0 && gb_my() < (gb_scan_t)(TX_Y0 + view_h)) {
         sb_drag();                                 /* drag the LEFT scrollbar (#166) */
         return;
     }
     if (have_pic() && view_hsb && hbar_w) {
         if (gb_mx() >= hbar_x && gb_mx() < (unsigned char)(hbar_x + hbar_w)
-            && gb_my() >= hbar_y && gb_my() < (unsigned char)(hbar_y + HSB_H)) {
+            && gb_my() >= hbar_y && gb_my() < (gb_scan_t)(hbar_y + HSB_H)) {
             hsb_drag();
             return;
         }

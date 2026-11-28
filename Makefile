@@ -32,14 +32,14 @@ $(AGON_NOTE): apps/notepad/main.c apps/notepad/icon.asm Makefile tools/build_cap
 	APPDEFS=-DGB_AGON APP_ICON=apps/notepad/icon.asm DOC=1 APP_CFLAGS=--opt-code-size DATA_LOC=0x6c00 bash tools/build_capp.sh apps/notepad build/agon/NOTEPAD.RAW
 	cp build/agon/NOTEPAD.RAW $@
 
-$(AGON_CARD)/GEOBENCH.BIN: kernel/agon/boot.asm kernel/agon/input.asm kernel/agon/input.inc kernel/lowram.inc lib/gbapp.inc build/agon/runtime.bin build/agon/files.bin build/agon/window.bin build/agon/system.bin build/agon/worker.bin build/agon/ist.inc
+$(AGON_CARD)/GEOBENCH.BIN: kernel/agon/boot.asm kernel/agon/video.asm kernel/agon/input.asm kernel/agon/input.inc kernel/lowram.inc lib/gbapp.inc build/agon/runtime.bin build/agon/files.bin build/agon/window.bin build/agon/gesture.bin build/agon/system.bin build/agon/worker.bin build/agon/ist.inc
 	mkdir -p $(@D)
 	$(RASM) $< -ob $@
 
 # Keep the trial card separate so the tested normal card remains usable.
 AGON_VGA_SD := build/agon-vga-sd
 AGON_VGA_BIN := QA/AGON/VGA/GBVGA.BIN
-.PHONY: agon-vga run-agon-vga test-agon-vga
+.PHONY: agon-vga run-agon-vga test-agon-vga test-agon-resolution
 agon-vga: agon $(AGON_VGA_BIN)
 	mkdir -p $(AGON_VGA_SD)
 	cp -R $(AGON_CARD)/. $(AGON_VGA_SD)/
@@ -54,6 +54,9 @@ run-agon-vga: agon-vga
 
 test-agon-vga: agon-vga
 	AGON_VGA_ONLY=1 xvfb-run -a -s "-screen 0 1024x768x24" python3 tools/test_agon_boot.py $(AGON_VGA_SD) $(AGON_TEST_HOST)
+
+test-agon-resolution: agon
+	AGON_RESOLUTION_ONLY=1 xvfb-run -a -s "-screen 0 1024x768x24" python3 tools/test_agon_boot.py $(AGON_CARD) $(AGON_TEST_HOST)
 
 # Same analog face and Squares animation as the other targets; MOS input,
 # persistence and VDP line drawing are Agon-specific.
@@ -71,31 +74,36 @@ build/agon/system.bin: kernel/agon/system.c kernel/agon/guest.c kernel/agon/docu
 	sdcc -mz80 --opt-code-size -DGB_AGON -Ilib/gb -c apps/clock/main.c -o $(@D)/clock.rel
 	sdcc -mz80 --opt-code-size -DGB_AGON -Ilib/gb -c apps/saver/main.c -o $(@D)/squares.rel
 	sdcc -mz80 --opt-code-size -DGB_AGON -Ilib/gb -c lib/gb/gbwin.c -o $(@D)/syswin.rel
-	sdcc -mz80 --no-std-crt0 --code-loc 0xa000 --data-loc 0xe480 $(addprefix $(@D)/,system_entry.rel sys.rel saver_screen.rel workspace.rel document.rel storage.rel fileops.rel guest.rel clock.rel squares.rel syswin.rel syslib.rel) -o $(@D)/system.ihx
+	sdcc -mz80 --no-std-crt0 --code-loc 0xa000 --data-loc 0xe550 $(addprefix $(@D)/,system_entry.rel sys.rel saver_screen.rel workspace.rel document.rel storage.rel fileops.rel guest.rel clock.rel squares.rel syswin.rel syslib.rel) -o $(@D)/system.ihx
 	python3 -c 'import re; s=open("$(@D)/system.map").read(); a,n=(int(x,16) for x in re.search(r"^_DATA\s+(\w+)\s+(\w+)",s,re.M).groups()); assert a+n<=0xeb00, "Agon system data overlaps Files"'
 	makebin -s 65536 -p $(@D)/system.ihx $(@D)/system.flat
 	tail -c +40961 $(@D)/system.flat > $@
 
-build/agon/window.bin: kernel/agon/window.c kernel/agon/window_entry.s lib/gb/gb.h
+build/agon/window.bin build/agon/gesture.bin &: tools/agon_window_sections.py kernel/agon/window.c kernel/agon/gesture.c kernel/agon/geometry.h kernel/agon/window_entry.s lib/gb/gb.h lib/gb/agon_display.h
 	mkdir -p $(@D)
 	sdasz80 -o $(@D)/window_entry.rel kernel/agon/window_entry.s
-	sdcc -mz80 --opt-code-size -DGB_AGON -Ilib/gb -c $< -o $(@D)/window.rel
-	sdcc -mz80 --no-std-crt0 --code-loc 0x0900 --data-loc 0x1e00 $(@D)/window_entry.rel $(@D)/window.rel -o $(@D)/window.ihx
+	sdcc -mz80 --opt-code-size -DGB_AGON -Ilib/gb -c kernel/agon/window.c -o $(@D)/window.rel
+	sdcc -mz80 --opt-code-size --codeseg GESTURE -DGB_AGON -Ilib/gb -c kernel/agon/gesture.c -o $(@D)/gesture.rel
+	sdcc -mz80 --no-std-crt0 --code-loc 0x0900 --data-loc 0x1e00 -Wl-b_GESTURE=0xf240 $(@D)/window_entry.rel $(@D)/window.rel $(@D)/gesture.rel -o $(@D)/window.ihx
 	makebin -s 65536 -p $(@D)/window.ihx $(@D)/window.flat
-	tail -c +2305 $(@D)/window.flat > $@
+	python3 tools/agon_window_sections.py $(@D)
 
 build/agon/runtime.bin: kernel/agon/runtime.asm kernel/agon/draw.asm kernel/agon/input.inc lib/gbapp.inc kernel/lowram.inc QA/CPC/CARD/GBENCH/DEFAULT.FNT
 	mkdir -p $(@D)
 	$(RASM) $< -ob $@
 
 # Resident MOS directory/icon services and compact long-name browser.
-build/agon/files.bin: kernel/agon/files.c kernel/agon/icons.c kernel/agon/files_entry.s lib/gb/gb.h lib/gb/gblib.s
+build/agon/system.bin: kernel/agon/prefs.h
+build/agon/files.bin: kernel/agon/files.c kernel/agon/prefs.c kernel/agon/prefs.h kernel/agon/viewport.c lib/gb/agon_viewport.h kernel/agon/icons.c kernel/agon/files_entry.s lib/gb/gb.h lib/gb/gblib.s
 	mkdir -p $(@D)
 	sdasz80 -o $(@D)/files_entry.rel kernel/agon/files_entry.s
 	sdasz80 -o $(@D)/gblib.rel lib/gb/gblib.s
 	sdcc -mz80 --fomit-frame-pointer -Ilib/gb -c $< -o $(@D)/files.rel
+	sdcc -mz80 --opt-code-size -DGB_AGON -Ilib/gb -c kernel/agon/viewport.c -o $(@D)/viewport.rel
+	sdcc -mz80 --opt-code-size -c kernel/agon/prefs.c -o $(@D)/prefs.rel
 	sdcc -mz80 -c kernel/agon/icons.c -o $(@D)/icons.rel
-	sdcc -mz80 --no-std-crt0 --code-loc 0x8800 --data-loc 0xf200 $(@D)/files_entry.rel $(@D)/files.rel $(@D)/icons.rel $(@D)/gblib.rel -o $(@D)/files.ihx
+	sdcc -mz80 --no-std-crt0 --code-loc 0x8800 --data-loc 0xf200 $(@D)/files_entry.rel $(@D)/files.rel $(@D)/icons.rel $(@D)/viewport.rel $(@D)/prefs.rel $(@D)/gblib.rel -o $(@D)/files.ihx
+	python3 -c 'import re; s=open("$(@D)/files.map").read(); assert all(int(a,16)+int(n,16)<=0xf240 for a,n in re.findall(r"^_(?:DATA|INITIALIZED|BSS)\s+(\w+)\s+(\w+)",s,re.M)), "Agon Files data overlaps WM gestures"'
 	makebin -s 65536 -p $(@D)/files.ihx $(@D)/files.flat
 	tail -c +34817 $(@D)/files.flat > $@
 
@@ -110,7 +118,7 @@ $(AGON_PREVIEW): kernel/agon/picview/main.c Makefile tools/build_capp.sh tools/b
 	cp build/agon/PICVIEW.RAW $@
 
 $(AGON_FM): apps/filemgr/main.c Makefile tools/build_capp.sh tools/build_cache.sh tools/check_app_layout.py lib/gb/gb.h lib/gb/gbwin.c lib/gb/gbdoc.c lib/gb/gbscroll.c lib/gb/gbui_stub.c lib/gb/gblib.s lib/gb/crt0.s
-	APPDEFS=-DGB_AGON APP_CFLAGS=--opt-code-size DATA_LOC=0x7900 DOCRO=1 SCROLL=1 bash tools/build_capp.sh apps/filemgr build/agon/FILEMGR.RAW
+	APPDEFS=-DGB_AGON APP_CFLAGS=--opt-code-size DATA_LOC=0x7900 DIALOGS=1 SCROLL=1 bash tools/build_capp.sh apps/filemgr build/agon/FILEMGR.RAW
 	mkdir -p $(@D)
 	cp build/agon/FILEMGR.RAW $@
 
@@ -173,7 +181,7 @@ build/agon/test_saver_screen: tools/test_agon_saver_screen.c kernel/agon/saver_s
 	mkdir -p $(@D)
 	$(CC) -std=c99 -O2 $^ -o $@
 
-build/agon/test_window: tools/test_agon_window.c kernel/agon/window.c lib/gb/gb.h
+build/agon/test_window: tools/test_agon_window.c kernel/agon/gesture.c kernel/agon/geometry.h kernel/agon/window.c lib/gb/gb.h
 	mkdir -p $(@D)
 	$(CC) -std=c99 -O2 -Ilib/gb $< -o $@
 
@@ -184,6 +192,8 @@ test-agon: agon build/agon/test_glyphs build/agon/test_saver_screen build/agon/t
 	xvfb-run -a -s "-screen 0 1024x768x24" python3 tools/test_agon_boot.py $(AGON_CARD) $(AGON_TEST_HOST)
 
 build/agon/system.bin build/agon/window.bin build/agon/files.bin $(AGON_XAOS) $(AGON_VIEWER) $(AGON_PREVIEW) build/agon/test_glyphs build/agon/test_window: lib/gb/agon_display.h
+
+$(AGON_NOTE) $(AGON_FM) $(AGON_PREVIEW) $(AGON_VIEWER): lib/gb/agon_viewport.h lib/gb/agon_display.h
 
 cpc:
 	bash tools/build_kernel.sh

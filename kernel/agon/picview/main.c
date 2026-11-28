@@ -1,15 +1,16 @@
 /* Read-only Agon document guest. Upload the fitted GBPC bitmap once, in
  * complete VDP blocks: a slow SD read must never leave a VDU packet open. */
 #include "gb.h"
-#include "agon_display.h"
+#include "agon_viewport.h"
 #include <string.h>
 
 typedef unsigned char u8;
 #define DOC_PATH (*(const char * volatile *)0x17fd)
-#define WIDTH 312
+#define WIDTH 512 /* GBPC input limit; fitted previews never upscale */
 #define ID_LO 0x50
 #define ID_HI 0x47
-static u8 handle, valid, mode, dh, view_h, palette[16];
+static u8 handle, valid, mode, palette[16];
+static unsigned dh,view_h;
 static unsigned width, height, stride, dw, view_w;
 static u8 xbyte[WIDTH], colours[4][256];
 static const u8 *lookup[WIDTH];
@@ -87,7 +88,7 @@ static u8 upload(void)
             while (frac >= dh) { frac -= dh; ++next; }
         }
     }
-    define[14] = dw; define[15] = dw >> 8; define[16] = dh;
+    define[14] = dw; define[15] = dw >> 8; define[16] = dh; define[17] = dh >> 8;
     send(define, sizeof(define));
     return 1;
 }
@@ -98,7 +99,8 @@ static void event(void)
         send(clear,sizeof(clear));
         gb_wm_close();
     } else if (gb_msg.type == GB_MSG_DRAW) {
-        u8 x = gb_wm_x(), y = gb_wm_y(), w = gb_wm_w(), h = gb_wm_h();
+        u8 x = gb_wm_x(), y = gb_wm_y(), w = gb_wm_w();
+        unsigned h=gb_wm_h();
         unsigned available = (w-2)*4, px;
         if (view_w != available || view_h != h-22) {
             view_w = available; view_h = h-22; valid = 0;

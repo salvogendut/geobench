@@ -65,10 +65,12 @@ trial on AgonLight2 hardware. Double-clicking a picture in Files now opens
 Viewer; **File > Quick preview** retains the fit-to-window PICVIEW. Fullscreen
 and directory cycling are not part of this first port.
 
-**640x480 trial:** `GBVGA.BIN` boots the same applications on a native
-640x480 desktop. Window positions span the screen; guest window dimensions
-remain byte-sized. The resident window manager translates guest scanlines
-to physical coordinates for painting, hit testing and save-under. Test on
+**Display modes:** The standard `GEOBENCH.BIN` supports 320x240 and native
+640x480. Settings saves the resolution and applies it when the desktop has
+no open apps. File Manager, Notepad, Viewer and Quick Preview can resize
+across the workspace. They use 16-bit scanlines; fixed-layout guests keep
+the byte-coordinate ABI. The window manager uses physical bounds for
+hit testing, drag outlines and saving the pixels beneath windows. Test on
 the physical board before changing any defaults, particularly saving and
 restoring a full VGA screensaver over overlapping windows. See the separate
 card and launch instructions in [BUILDING.md](BUILDING.md#experimental-agonlight2-target).

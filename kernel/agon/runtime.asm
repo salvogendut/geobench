@@ -62,16 +62,7 @@ PREEMPTIVE      equ 0
 paint_guest     ld a,(AG_FILEMODE)
                 or a
                 jr z,chrome_done
-                ld bc,(MW_RECT)
-                ld de,(MW_RECT+2)
-                call unpack_rect
-                xor a
-                call draw_fill
-                ld bc,(MW_RECT)
-                ld de,(MW_RECT+2)
-                call unpack_rect
-                ld a,2
-                call draw_frame
+                call AG_WM+15
 chrome_done     jp window_title
 
 ; Little-endian rectangle in memory: x,y,w,h -> B,C,D,E.

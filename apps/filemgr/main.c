@@ -14,6 +14,9 @@
  * rect-clipped repaint); the contents - views, grid, scrollbar - are drawn here
  * with gb_dir*, gb_blite, gb_fill/gb_frame/gb_text. No kernel changes. */
 #include "gb.h"
+#ifdef GB_AGON
+#include "agon_viewport.h"
+#endif
 #include <string.h>
 
 #ifdef GB_AGON
@@ -55,7 +58,12 @@
 #define LVIS     (CT_H / ROW_H)          /* visible rows (6) */
 
 /* icons view */
+#ifdef GB_AGON
+static unsigned char grid_cols = 3;
+#define ICOLS grid_cols
+#else
 #define ICOLS    3
+#endif
 #define CELL_W   (CT_W / ICOLS)          /* cell width (17) */
 #define CELL_H   44                      /* full icon (32) + name (8) + gap (#88) */
 #define IVIS     (CT_H / CELL_H)         /* visible grid rows (4) */
@@ -102,7 +110,8 @@ extern unsigned char gb_app_probe(char *dst);
 #endif
 
 static unsigned char win_x = DEF_X, win_y = DEF_Y;
-static unsigned char win_w = DEF_W, win_h = DEF_H;
+static unsigned char win_w = DEF_W;
+static gb_scan_t win_h = DEF_H;
 static unsigned char total;       /* number of files on the disk          */
 static unsigned char top;         /* first visible LINE (row / grid row)  */
 static unsigned char nsel;        /* 0 = none, else selected index + 1    */
@@ -380,7 +389,7 @@ static void draw_scrollbar(void)
 /* Draw a name truncated to the current icon cell. Calculate the dynamic limit
    once: expanding NAME_MAX in the loop condition makes SDCC run two signed
    divisions per character and corrupts the longest CPC label. */
-static void draw_name(unsigned char col, unsigned char line, char *name)
+static void draw_name(unsigned char col, gb_scan_t line, char *name)
 {
     static char tmp[14];
     unsigned char i, limit = NAME_MAX;
@@ -717,14 +726,16 @@ static unsigned char appicon_load(unsigned char raw)
 #endif
 
 /* draw_entry_type: regular IST slot or an APP-owned bitmap. */
-static void draw_entry_type(unsigned char raw, unsigned char x, unsigned char y,
+static void draw_entry_type(unsigned char raw, unsigned char x, gb_scan_t y,
                             unsigned char half)
 {
     unsigned char state = icons[raw];
     unsigned char slot = (unsigned char)(state & APPICON_SLOTMASK);
 #ifdef GB_AGON
-    if (half) gb_icon_half(slot, x, y);
-    else gb_icon(slot, x, y);
+    unsigned char base=ag_ybase, line=ag_stamp_y(y);
+    if (half) gb_icon_half(slot, x, line);
+    else gb_icon(slot, x, line);
+    ag_ybase=base;
 #elif defined(GB_PREEMPTIVE)
     /* Repaints are storage-free. The frame job reloads and draws visible embedded
        icons after this generic placeholder has been painted. */
@@ -885,16 +896,26 @@ static void build_list(void)
 }
 #endif
 
+#ifdef GB_AGON
+static void FM_UP_ICON(unsigned char slot,unsigned char x,unsigned y)
+{
+    unsigned char base=ag_ybase, line=ag_stamp_y(y);
+    gb_icon(slot,x,line); ag_ybase=base;
+}
+#else
+#define FM_UP_ICON gb_icon
+#endif
 static void draw_list_row(unsigned char i)
 {
-    unsigned char y, p, raw, up = up_avail();
+    gb_scan_t y;
+    unsigned char p, raw, up = up_avail();
     unsigned char dt = disp_total();
     p = (unsigned char)(top + i);
     y = CT_Y + i * ROW_H;
     gb_fill(CT_X, y, CT_W, ROW_H, 0);          /* clear stale rows/icons after scroll/repaint */
     if (p >= dt) return;
     if (up && p == 0) {                        /* the ".." parent-dir entry (#142) */
-        gb_icon(ICON_UP, CT_X, y + 1);         /* 16px icon - fits the row at full height */
+        FM_UP_ICON(ICON_UP, CT_X, y + 1);         /* 16px icon - fits the row at full height */
         gb_text(CT_X + 9, y + 6, "..");
     } else {
         raw = order[(unsigned char)(p - up)];
@@ -913,17 +934,18 @@ static void draw_list_view(void)
 
 static void draw_icons_row(unsigned char r)
 {
-    unsigned char c, cx, cy, raw, cell_w = CELL_W, up = up_avail();
+    gb_scan_t cy;
+    unsigned char c, cx, raw, cell_w = CELL_W, up = up_avail();
     unsigned int idx = (unsigned int)(top + r) * ICOLS;
     unsigned int dt = disp_total();
-    cy = (unsigned char)(CT_Y + r * CELL_H);
+    cy = CT_Y + r * CELL_H;
     cx = CT_X;
     for (c = 0; c < ICOLS; c++) {
         gb_fill(cx, cy, cell_w, CELL_H - 1, 0);             /* clear whole cell before repaint */
         if (idx < dt) {
             if (up && idx == 0) {                            /* the ".." entry (#142) */
-                gb_icon(ICON_UP, (unsigned char)(cx + (cell_w - 4) / 2),  /* 16px, centered */
-                        (unsigned char)(cy + 9));                    /* in the 32px band */
+                FM_UP_ICON(ICON_UP, (unsigned char)(cx + (cell_w - 4) / 2),  /* 16px, centered */
+                        (gb_scan_t)(cy + 9));                    /* in the 32px band */
                 gb_text((unsigned char)(cx + (cell_w - 3) / 2), cy + 34, "..");  /* centered */
             } else {
                 raw = order[(unsigned char)(idx - up)];
@@ -960,13 +982,14 @@ static void icon_scan_reset(void)
 
 static void sel_frame(unsigned char pos, unsigned char pen)
 {
-    unsigned char line = 0, x, y;
+    unsigned char line = 0, x;
+    gb_scan_t y;
     if (!pos || view != V_ICONS) return;
     pos--;
     while (pos >= ICOLS) { pos -= ICOLS; line++; }
     if (line < top || line >= top + IVIS) return;
     x = (unsigned char)(CT_X + pos * CELL_W);
-    y = (unsigned char)(CT_Y + (line - top) * CELL_H);
+    y = CT_Y + (line - top) * CELL_H;
     gb_frame(x, y, CELL_W, CELL_H - 1, pen);
 }
 
@@ -1105,6 +1128,9 @@ static unsigned char appicon_step(void)
 static void sync_rect(void)
 {
     win_x = gb_wm_x(); win_y = gb_wm_y(); win_w = gb_wm_w(); win_h = gb_wm_h();
+#ifdef GB_AGON
+    grid_cols=win_w>80 ? CT_W/19 : 3;
+#endif
 }
 /* fm_draw (on_draw): the WM drew the frame/title and owns the cursor; paint the content. */
 static void fm_draw(void)
@@ -1201,7 +1227,8 @@ static void open_entry(const char *name)
    (self-driven poll loop, like the modal popups - the WM loop pauses meanwhile). */
 static void sb_drag(void)
 {
-    unsigned char tl = total_lines(), vl = vis_lines(), my, nt;
+    unsigned char tl = total_lines(), vl = vis_lines(), nt;
+    gb_scan_t my;
     if (tl <= vl) return;
     for (;;) {
         if (!(gb_poll() & GB_FIRE)) break;
@@ -1233,6 +1260,7 @@ static void fm_view(unsigned char item)
     }
 }
 
+#ifndef GB_AGON /* Agon routes menu commands and window gestures in the native desktop. */
 /* fm_fullscreen: View > Fullscreen - cover the screen and restore the prior
    geometry on exit; the listing reflows to the new size (#142). */
 static void fm_fullscreen(unsigned char on)
@@ -1434,6 +1462,8 @@ static void on_event(void)
     gb_doc_event();                       /* the View menu (Fullscreen / Icons-List / Up) */
 }
 
+#endif
+
 /* on_frame (#146): the WM handled close/drag/grip routing; re-assert our drive, tick the
    double-click timer, and run the View menu framework. */
 static void fm_frame(void)
@@ -1482,7 +1512,9 @@ static void fm_frame(void)
 #endif
 #endif
     if (dc_timer) dc_timer--;
+#ifndef GB_AGON
     if (gb_doc_frame()) { gb_restore_parent(); return; }   /* a View menu ran (#142) */
+#endif
 }
 
 /* on_close (#146): no document to save -> just close. */
@@ -1506,6 +1538,9 @@ static void fm_close(void)
         list_state = LIST_IDLE;
     }
 #endif
+#ifdef GB_AGON
+    gb_wm_close();
+#else
     if (gb_doc_close()) {
 #ifdef GB_PCW
         icon_cache_release();
@@ -1513,8 +1548,10 @@ static void fm_close(void)
         gb_wm_close();
     }
     else gb_restore_parent();
+#endif
 }
 
+#ifndef GB_AGON
 /* on_drag (#146): a title-bar press -> move the window. */
 static void fm_drag(void)
 {
@@ -1528,11 +1565,14 @@ static void fm_drag(void)
     }
 }
 
+#endif
+
 /* on_click (#146): a content press - resize grip, scrollbar, or an entry (select / open /
    drag to another window or the Trash). */
 static void fm_click(void)
 {
-    unsigned char mx, my, idx;
+    unsigned char mx, idx;
+    gb_scan_t my;
     const char *name;
 #ifdef GB_AGON
     /* Agon's input loop sleeps between events instead of sending idle frames. */
@@ -1638,9 +1678,11 @@ static void fm_proc(void)
         case GB_MSG_CLICK: fm_click(); break;
         case GB_MSG_FRAME: fm_frame(); break;
         case GB_MSG_CLOSE: fm_close(); break;
+#ifndef GB_AGON
         case GB_MSG_DRAG:  fm_drag();  break;
         case GB_MSG_MENU:
         case GB_MSG_DROP:  on_event(); break;
+#endif
     }
 }
 
@@ -1658,7 +1700,9 @@ void main(void)
     fmmw.y = win_y;
     gb_wm_managed(&fmmw);        /* register first (no draw, focus) so gb_set_name/fs_load
                                    target our window for the config read below */
+#ifndef GB_AGON
     gb_doc(&fmdoc);              /* View menu (Fullscreen / Icons-List); no File (#142) */
+#endif
     gb_set_drive(my_drive);
     /* Open at the drive ROOT. The kernel's directory position is a single global
        (fs_dir_clus / dir stack); a previously-open window may have left it in a
@@ -1681,8 +1725,10 @@ void main(void)
     /* k_wm_managed already clipped the unpublished window. Keep the desktop as-is
        until list_step can paint the completed window once. */
 #else
+#ifndef GB_AGON
     gb_wm_damage(0, 8, GB_COLS, GB_LINES - 8); /* opening one FM can expose older stacked FM
                                                   windows outside the new window's damage rect */
+#endif
     gb_restore_parent();         /* first paint: WM chrome + fm_draw */
 #endif
 }

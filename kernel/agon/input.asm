@@ -301,18 +301,18 @@ kp_add          add hl,bc
 pointer_move    ld a,(AG_MOTION)
                 inc a
                 ld (AG_MOTION),a
-                ld bc,AG_WIDTH-1
+                ld bc,(last_col)
                 or a
                 sbc hl,bc
                 jr c,pointer_x_ok
                 ld hl,0
 pointer_x_ok    add hl,bc
                 ld (pointer_x),hl
-                ld hl,AG_HEIGHT-1
+                ld hl,(last_line)
                 or a
                 sbc hl,de
                 jr nc,pointer_y_ok
-                ld de,AG_HEIGHT-1
+                ld de,(last_line)
 pointer_y_ok
                 ld (pointer_y),de
 pointer_plot    ld hl,(pointer_x)

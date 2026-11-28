@@ -139,6 +139,7 @@ deps=("$0" "tools/build_cache.sh" "tools/check_app_layout.py" "$GB/crt0.s" "$GBL
 case " $ALL_APPDEFS " in
     *" -DGB_AGON "*)
         deps+=("$GB/gbagon.h")
+        if grep -Rqs '"agon_viewport.h"' "$APP"; then deps+=("$GB/agon_viewport.h" "$GB/agon_display.h"); fi
         if grep -Rqs '"agon_display.h"' "$APP"; then deps+=("$GB/agon_display.h"); fi
         if grep -Rqs '"agon_pic.h"' "$APP"; then deps+=("$GB/agon_pic.h"); fi ;;
 esac

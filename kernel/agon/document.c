@@ -35,7 +35,7 @@ void ag_bar(void)
 }
 
 static Rect under;
-static u8 under_base;
+static u8 under_base,under_hhi;
 static __at(0x3500) char pathbuf[256];
 #define fi ag_info
 static __at(0x3720) u8 directory[256];
@@ -51,12 +51,12 @@ void ag_doc_reset(void) { picked=0; validator=0; }
 void ag_panel(u8 x,u8 y,u8 w,u8 h)
 {
     static const u8 min[]={1,1};
-    under=live; under_base=ag_ybase; ag_ybase=0;
+    under=live; under_base=ag_ybase; under_hhi=ag_hhi; ag_ybase=ag_hhi=0;
     live.x=x; live.y=y; live.w=w; live.h=h;
     ag_modal=1; layer_open(min);
     gb_fill(x,y,w,h,1); gb_frame(x,y,w,h,2);
 }
-void ag_dismiss(void) { layer_close(); live=under; ag_ybase=under_base; ag_modal=0; }
+void ag_dismiss(void) { layer_close(); live=under; ag_ybase=under_base; ag_hhi=under_hhi; ag_modal=0; }
 
 void ag_notice(const char *s)
 {
