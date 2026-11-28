@@ -1,6 +1,7 @@
 /* Agon desktop accessories. They run from resident memory: opening Settings,
  * the clock or a saver never replaces the active guest's code or directory. */
 #include "gb.h"
+#include "agon_display.h"
 #include <string.h>
 
 typedef unsigned char u8;
@@ -20,7 +21,7 @@ extern u8 cfg_open(const char *), cfg_create(const char *), cfg_close(u8);
 extern unsigned cfg_read(u8 *), cfg_write(const u8 *);
 extern void agon_squares_start(unsigned), agon_squares_tick(void);
 extern void agon_clock_draw(u8), agon_clock_tick(void);
-extern u8 saver_screen_save(void);
+extern u8 saver_screen_save(u8);
 extern void saver_screen_restore(void);
 extern u8 ag_modal;
 
@@ -31,10 +32,11 @@ static const u8 geom[][6] = {
     {0,0,0,0,0,0}, {0,8,27,38,27,38}, {15,37,50,108,50,108},
     {24,20,28,122,22,96}
 };
-static struct { Rect rect; u8 guest, page; } stack[2];
+static struct { Rect rect; u8 guest, page, base; } stack[2];
 static Prefs prefs, edit;
 static u8 depth, page, moved, valid_time, animation, disk_error, first_event, before_saver;
 static unsigned activity, rtc_at, frame_at;
+static u8 saver_base;
 u8 cfg_handle;
 
 static u8 config(u8 write)
@@ -79,16 +81,22 @@ static void clock_read(u8 force)
         valid_time=1;
         if (force || !was_valid || prev_h!=gb_hour || former!=gb_min) {
             t[5]=0;
-            gb_textbw(71,0,t);
+            u8 base=ag_ybase; ag_ybase=0;
+            gb_textbw(ag_vga ? 151 : 71,0,t);
+            ag_ybase=base;
         }
         break;
     }
-    if (!valid_time && (force || was_valid)) gb_textbw(71,0,"--:--");
+    if (!valid_time && (force || was_valid)) {
+        u8 base=ag_ybase; ag_ybase=0;
+        gb_textbw(ag_vga ? 151 : 71,0,"--:--"); ag_ybase=base;
+    }
 }
 
 static void overlay(u8 kind)
 {
     stack[depth].rect=live; stack[depth].guest=guest; stack[depth].page=page;
+    stack[depth].base=ag_ybase; ag_ybase=0;
     ++depth; page=kind;
     memcpy((void *)&live,geom[kind],4);
     guest=kind==CLOCK ? 4 : 0;   /* only Clock is resizable */
@@ -99,6 +107,7 @@ static void pop(void)
 {
     layer_close();
     --depth; live=stack[depth].rect; guest=stack[depth].guest; page=stack[depth].page;
+    ag_ybase=stack[depth].base;
     activity=now;
 }
 
@@ -143,11 +152,16 @@ static void draw(void)
 static void start_saver(u8 kind)
 {
     activity=now;
-    if (!saver_screen_save()) return;
+    if (!saver_screen_save(ag_vga)) return;
+    saver_base=ag_ybase; ag_ybase=0;
     before_saver=page;
     page=SAVER;
     animation=!kind;
-    if (animation) agon_squares_start(now); else gb_fill(0,0,80,240,2);
+    if (ag_vga) {
+        gb_fill(0,0,160,240,animation ? 0 : 2);
+        ag_ybase=240; gb_fill(0,0,160,240,animation ? 0 : 2); ag_ybase=0;
+    }
+    if (animation) agon_squares_start(now); else if (!ag_vga) gb_fill(0,0,80,240,2);
     frame_at=now;
 }
 
@@ -180,9 +194,9 @@ void sys_init(void)
     ag_modal=0; first_event=1; activity=now=0; moved=motion=0;
     prefs.saver=prefs.seconds=0; prefs.timeout=3;
     config(0);
-    gb_fill(0,0,80,8,1);
+    gb_fill(0,0,ag_vga ? 160 : 80,8,1);
     gb_textbw(1,0,"System");
-    gb_textbw(34,0,"GEOBENCH");
+    gb_textbw(ag_vga ? 74 : 34,0,"GEOBENCH");
     clock_read(1);
 }
 
@@ -201,6 +215,7 @@ u8 sys_event(u8 key)
     if (page==SAVER) {
         if (key || changed) {
             saver_screen_restore();
+            ag_ybase=saver_base;
             page=before_saver; activity=now; clock_read(1);
             if (page==CLOCK && valid_time) agon_clock_tick();
         } else if (animation && (unsigned)(now-frame_at)>=5) {
@@ -217,9 +232,9 @@ u8 sys_event(u8 key)
     if (!key) return page==DESK && (guest>=3 && guest<=6) ? 253 : 0;
     x=gb_mx(); y=gb_my();
     if (page==DESK) {
-        if (key!=' ' || y>=8) return key;
+        if (key!=' ' || ag_mouse_y>=8) return key;
         if ((guest==3 && x>=10 && x<28) || ((guest==1 || guest==5 || guest==6) && x>=10 && x<17)) return key;
-        if (x<12 || x>=70) sys_open(x<12 ? 'M' : 'T');
+        if (x<12 || x>=(ag_vga ? 150 : 70)) sys_open(x<12 ? 'M' : 'T');
     } else if (key==27) pop();
     else if (page==MENU) {
         pop();

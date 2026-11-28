@@ -36,6 +36,25 @@ $(AGON_CARD)/GEOBENCH.BIN: kernel/agon/boot.asm kernel/agon/input.asm kernel/ago
 	mkdir -p $(@D)
 	$(RASM) $< -ob $@
 
+# Keep the trial card separate so the tested normal card remains usable.
+AGON_VGA_SD := build/agon-vga-sd
+AGON_VGA_BIN := QA/AGON/VGA/GBVGA.BIN
+.PHONY: agon-vga run-agon-vga test-agon-vga
+agon-vga: agon $(AGON_VGA_BIN)
+	mkdir -p $(AGON_VGA_SD)
+	cp -R $(AGON_CARD)/. $(AGON_VGA_SD)/
+	cp $(AGON_VGA_BIN) $(AGON_VGA_SD)/
+
+$(AGON_VGA_BIN): kernel/agon/boot.asm $(AGON_CARD)/GEOBENCH.BIN
+	mkdir -p $(@D)
+	$(RASM) $< -DAGON_VGA=1 -ob $@
+
+run-agon-vga: agon-vga
+	flatpak run --filesystem="$(abspath $(AGON_VGA_SD)):rw" io.github.tomm.fab_agon_emulator --sdcard "$(abspath $(AGON_VGA_SD))"
+
+test-agon-vga: agon-vga
+	AGON_VGA_ONLY=1 xvfb-run -a -s "-screen 0 1024x768x24" python3 tools/test_agon_boot.py $(AGON_VGA_SD) $(AGON_TEST_HOST)
+
 # Same analog face and Squares animation as the other targets; MOS input,
 # persistence and VDP line drawing are Agon-specific.
 build/agon/system.bin: kernel/agon/system.c kernel/agon/guest.c kernel/agon/document.c kernel/agon/storage.c kernel/agon/storage.h kernel/agon/fileops.c kernel/agon/workspace.c kernel/agon/saver_screen.c kernel/agon/system_entry.s apps/clock/main.c apps/saver/main.c lib/gb/gbwin.c lib/gb/gblib.s lib/gb/gb.h lib/gb/gbagon.h
@@ -163,6 +182,8 @@ test-agon: agon build/agon/test_glyphs build/agon/test_saver_screen build/agon/t
 	build/agon/test_saver_screen
 	build/agon/test_window
 	xvfb-run -a -s "-screen 0 1024x768x24" python3 tools/test_agon_boot.py $(AGON_CARD) $(AGON_TEST_HOST)
+
+build/agon/system.bin build/agon/window.bin build/agon/files.bin $(AGON_XAOS) $(AGON_VIEWER) $(AGON_PREVIEW) build/agon/test_glyphs build/agon/test_window: lib/gb/agon_display.h
 
 cpc:
 	bash tools/build_kernel.sh

@@ -65,6 +65,14 @@ trial on AgonLight2 hardware. Double-clicking a picture in Files now opens
 Viewer; **File > Quick preview** retains the fit-to-window PICVIEW. Fullscreen
 and directory cycling are not part of this first port.
 
+**640x480 trial:** `GBVGA.BIN` boots the same applications on a native
+640x480 desktop. Window positions span the screen; guest window dimensions
+remain byte-sized. The resident window manager translates guest scanlines
+to physical coordinates for painting, hit testing and save-under. Test on
+the physical board before changing any defaults, particularly saving and
+restoring a full VGA screensaver over overlapping windows. See the separate
+card and launch instructions in [BUILDING.md](BUILDING.md#experimental-agonlight2-target).
+
 Start with the ABI/memory inventory and a tiny storage probe on a scratch SD card, not another resident accessory. Have File Manager launch a second build of the same Agon app without changing the kernel and reject an incompatible one. Then deliver the **Files -> Notepad -> Save As -> reopen in MOS** path. It is useful on its own and tests the loader, storage and UI contracts before BASIC or Paint starts depending on them.
 
 **Hardware references:** the [AgonLight2 board specification](https://www.olimex.com/Products/Retro-Computers/AgonLight2/open-source-hardware) lists 512 KiB of external CPU SRAM; that is not a promise of 512 KiB of free app memory. Use the [MOS API](https://agonplatform.github.io/agon-docs/mos/API/) for file, RTC and interrupt capabilities and the [VDP mode reference](https://agonplatform.github.io/agon-docs/vdp/Screen-Modes/) for display choices. Measure available resources on the supported firmware rather than assuming emulator limits.

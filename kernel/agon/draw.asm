@@ -13,11 +13,22 @@ pen_ready       ld a,(hl)
                 ld a,e
                 or a
                 ret z
+                ld a,(AG_YBASE)
+                ld l,a
+                ld h,0
                 ld a,c
-                ld (plot_y0),a
-                add a,e
+                add a,l
+                ld l,a
+                jr nc,fill_top
+                inc h
+fill_top        ld (plot_y0),hl
+                ld a,e
                 dec a
-                ld (plot_y1),a
+                add a,l
+                ld l,a
+                jr nc,fill_bottom
+                inc h
+fill_bottom     ld (plot_y1),hl
                 ld h,0
                 ld l,b
                 add hl,hl
@@ -76,7 +87,11 @@ draw_frame      push af
 
 ; GB_TEXT input: HL string, B/C origin, D/E ink/paper. Titles can stop
 ; before the gadgets; all other text stops at the right screen edge.
-draw_text       ld a,SCR_COLS
+draw_text       ld a,(AG_VGA)
+                or a
+                ld a,SCR_COLS
+                jr z,draw_text_limit
+                add a,a
 draw_text_limit ld (AG_TEXT_ARGS+4),a
                 ld (AG_TEXT_ARGS),bc
                 ld (AG_TEXT_ARGS+2),de

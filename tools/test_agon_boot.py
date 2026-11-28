@@ -156,8 +156,8 @@ def smoke(card, host):
                 finally:
                     run("xdotool", "keyup", "Shift_L")
 
-            def launch():
-                run("xdotool", "type", "--delay", "75", "geobench")
+            def launch(command="geobench"):
+                run("xdotool", "type", "--delay", "75", command)
                 key("Return")
 
             def wait_for(matches, message, timeout=8):
@@ -264,6 +264,58 @@ def smoke(card, host):
                 raise AssertionError(f"could not select {name!r}")
 
             time.sleep(3)  # MOS and the VDP boot independently
+            if os.environ.get("AGON_VGA_ONLY"):
+                launch("gbvga")
+                def region(s,x,y):
+                    return s.resize((640,480),Image.Resampling.NEAREST).crop((x,y,x+320,y+240))
+                def word(x,y,text,selected=False,blue=False):
+                    return wait_for(lambda s:label_matches(region(s,x,y),font,0,0,text,selected,blue),
+                                    f"missing VGA {text} at ({x},{y})")
+                wait_for(lambda s:wallpaper_matches(region(s,160,120),pic),"VGA wallpaper not centered")
+                word(4,0,"System"); word(592,50,"Clock",blue=True)
+                key("f"); word(36,19,"SD:",True)
+                move_keys("Right",6); move_keys("Down",1)
+                drag(40,32)
+                word(356,275,"SD:",True)
+                word(368,320,"GBENCH",blue=True)
+                move_keys("Down",2); double_click()
+                word(356,275,"SD:/GBENCH",True)
+                shot=word(520,408,"AGON.CAT",blue=True)
+                if os.environ.get("AGON_CAPTURE_DIR"):
+                    folder=Path(os.environ["AGON_CAPTURE_DIR"]); folder.mkdir(parents=True,exist_ok=True)
+                    shot.save(folder/"agon-vga-files.png")
+                move_keys("Left",50); move_keys("Up",40)
+                key("space"); word(8,10,"Settings")
+                key("v")
+                wait_for(lambda s:not label_matches(region(s,0,0),font,4,0,"System"),
+                         "VGA saver did not start",20)
+                key("Escape"); word(356,275,"SD:/GBENCH",True)
+                # Open PICS/1984.PIC from this moved Files window. Its source
+                # is taller than the viewport, so there is a left scrollbar.
+                move_keys("Right",48); move_keys("Down",37); double_click()
+                word(356,275,"SD:",True)
+                move_keys("Right",10); double_click(); word(356,275,"SD:/PICS",True)
+                double_click(); word(40,20,"1984.PIC",True)
+                move_keys("Left",60); move_keys("Up",40)
+                move_keys("Right",8); move_keys("Down",3); drag(40,32)
+                move_keys("Up",40)  # clear the pointer sprite from the title
+                word(360,276,"1984.PIC",True)
+                raw=(sd/"PICS/1984.PIC").read_bytes()
+                colours=((0,0,170),(255,255,255),(0,0,0),(255,0,0))
+                expected=bytes(c for y in range(120) for x in range(212)
+                               for v in [raw[14+80*y+x//4]>>(3-x%4)]
+                               for c in colours[((v>>4)&1)|((v&1)<<1)])
+                shot=wait_for(lambda s:region(s,376,288).crop((0,0,212,120)).tobytes()==expected,
+                              "VGA Viewer pixels wrapped or differ from the PIC")
+                if os.environ.get("AGON_CAPTURE_DIR"):
+                    shot.save(folder/"agon-vga-viewer.png")
+                key("Escape"); word(356,275,"SD:/PICS",True)
+                key("Escape")
+                wait_for(lambda s:wallpaper_matches(region(s,160,120),pic),"VGA window left damage")
+                key("Escape"); time.sleep(.8); launch()
+                wait_wallpaper(); key("Escape")
+                print("Agon VGA: lower-right Files and Viewer pixels, saver wake, restore and 320x240 relaunch OK")
+                return
             launch()
             desktop = wait_wallpaper()
             def pointer_at(s, x, y):

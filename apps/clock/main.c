@@ -86,12 +86,13 @@ static const signed char COS64[60] = {
 static volatile unsigned int fx0, fy0, fx1, fy1;
 static volatile unsigned char fpen;
 #if defined(GB_AGON)
+#include "agon_display.h"
 extern void sys_send(const void *, unsigned);
 static void line(int x0, int y0, int x1, int y1, unsigned char pen)
 {
     static const unsigned char inks[] = {4,15,0,9};
-    unsigned char p[] = {18,0,inks[pen],25,4,x0,x0>>8,y0,0,
-                         25,5,x1,x1>>8,y1,0};
+    unsigned char p[] = {18,0,inks[pen],25,4,x0,x0>>8,AG_PHYS_Y(y0),AG_PHYS_Y(y0)>>8,
+                         25,5,x1,x1>>8,AG_PHYS_Y(y1),AG_PHYS_Y(y1)>>8};
     sys_send(p,sizeof(p));
 }
 #elif defined(GB_MSX2) || defined(GB_PCW)

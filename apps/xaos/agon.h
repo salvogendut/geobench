@@ -1,6 +1,7 @@
 /* The Agon foreground and worker paths publish the same portable PIC rows. */
 #include <string.h>
 #include "gbagon.h"
+#include "agon_display.h"
 typedef unsigned char u8;
 static struct { u8 header[14], pixels[CANVAS_H][CANVAS_WB]; } pic;
 static u8 displayed,started,column;
@@ -39,7 +40,8 @@ static void flush(void)
     u8 top=gb_wm_y()+15;
     while(displayed<rows) {
         u8 x,first=0,pen=0;
-        cmd[7]=cmd[13]=top+displayed;
+        unsigned py=AG_PHYS_Y(top)+displayed;
+        cmd[7]=cmd[13]=py; cmd[8]=cmd[14]=py>>8;
         for(x=0;x<=CANVAS_W;x++) {
             u8 value=255;
             if(x<CANVAS_W) {

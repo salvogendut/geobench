@@ -247,7 +247,17 @@ guest_footer    ld a,(AG_FILEMODE)
                 ld hl,fm_setup
                 jr footer
 unsupported     ld hl,no_handler
-footer          ld bc,42             ; TAB + 39 printable columns
+footer          push hl
+                inc hl
+                inc hl
+                ld a,(AG_VGA)
+                or a
+                ld a,29
+                jr z,footer_row
+                ld a,59
+footer_row      ld (hl),a
+                pop hl
+                ld bc,42             ; TAB + 39 printable columns
                 call send
                 ld bc,0
                 xor a

@@ -1,6 +1,7 @@
 /* Read-only Agon document guest. Upload the fitted GBPC bitmap once, in
  * complete VDP blocks: a slow SD read must never leave a VDU packet open. */
 #include "gb.h"
+#include "agon_display.h"
 #include <string.h>
 
 typedef unsigned char u8;
@@ -114,7 +115,7 @@ static void event(void)
         if (valid) {
             px = (x+1)*4 + (view_w-dw)/2;
             plot[8] = px; plot[9] = px >> 8;
-            plot[10] = y+17 + (view_h-dh)/2;
+            { unsigned py=AG_PHYS_Y(y)+17+(view_h-dh)/2; plot[10]=py; plot[11]=py>>8; }
             send(plot,sizeof(plot));
         } else gb_text(x+3,y+28,w < 50 ? "Invalid picture" : "Invalid or unsupported picture");
         gb_draw_grip(x,y,w,h);

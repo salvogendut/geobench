@@ -6,7 +6,7 @@
         jp _sys_init
         jp _sys_event
         jp _sys_open
-        jp _saver_pixel         ; window snapshot fence; A = probe scanline
+        jp pixel_fence          ; compatibility fence, A = byte scanline
         jp _ag_load
         jp _ws_run
         jp _ws_register
@@ -184,8 +184,18 @@ _layer_close::
 
 ; Synchronous point query for MOS 2.x as well as 3.x. The tick deadline
 ; prevents a VDP with no response from trapping the desktop in the saver.
+pixel_fence:
+        ld l,a
+        ld h,#0
 _saver_pixel::
-        ld (pixel_y),a
+        ld (pixel_y),hl
+        ld hl,#319
+        ld a,(0x17eb)
+        or a
+        jr z,pixel_width
+        ld hl,#639
+pixel_width:
+        ld (pixel_x),hl
         .db 0x5b
         push ix
         ld a,#8
@@ -219,5 +229,6 @@ pixel_done:
         pop ix
         ret
 pixel_query:
-        .db 23,0,0x84,63,1
+        .db 23,0,0x84
+pixel_x: .dw 319
 pixel_y: .db 0,0

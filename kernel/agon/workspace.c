@@ -1,6 +1,7 @@
 /* A guest always executes at 4000h. Only switch its backing page between
  * callbacks: neither a C stack frame nor a MOS call is ever suspended. */
 #include "gb.h"
+#include "agon_display.h"
 #include <string.h>
 #include "storage.h"
 typedef struct { u8 x,y,w,h; } Rect;
@@ -22,7 +23,7 @@ extern u8 ag_text_ok(const char *);
 typedef struct {
     Rect rect;
     const gb_mwin_t *desc;
-    u8 kind;
+    u8 kind, base;
     char path[256], raw[11];
 } Guest;
 static Guest guests[MAX_GUESTS];
@@ -57,7 +58,7 @@ u8 ws_key(void) { u8 k=pending_key; pending_key=0; return k; }
 
 static void bind(u8 id)
 {
-    slot=id; live=guests[id].rect; mode=guests[id].kind;
+    slot=id; live=guests[id].rect; mode=guests[id].kind; ag_ybase=guests[id].base;
     docpath=guests[id].path;
     if (guests[id].desc) titleptr=&guests[id].desc->title;
 }
@@ -65,7 +66,7 @@ static void bind(u8 id)
 static void activate(u8 id)
 {
     if (slot==id) return;
-    if (slot!=NONE) { guests[slot].rect=live; ws_store(slot); }
+    if (slot!=NONE) { guests[slot].rect=live; guests[slot].base=ag_ybase; ws_store(slot); }
     ws_fetch(id);
     bind(id);
 }
@@ -125,11 +126,11 @@ static void open_requested(void)
         guests[id].path[0]=0;
         memset(guests[id].raw,' ',11);
     }
-    guests[old].rect=live; ws_store(old);
+    guests[old].rect=live; guests[old].base=ag_ybase; ws_store(old);
     kind=ag_load(app);
     if (kind==255 || (expected!=1 && kind!=(expected==5?1:expected)) ||
         (expected==1 && kind==2)) { ws_fetch(old); ws_error(); return; }
-    guests[id].kind=kind;
+    guests[id].kind=kind; guests[id].base=0;
     if(kind==1) strcpy(guests[id].path,"/");
     bind(id);
     ws_entry();
@@ -194,16 +195,17 @@ void ws_run(void)
         if (k==23 && count>1) { raise_at(0); continue; } /* Ctrl-W cycles windows */
         if (k==' ') {
             x=gb_mx(); y=gb_my();
-            if(mode==1 && y<8 && x>=10 && x<17) {
+            if(mode==1 && ag_mouse_y<8 && x>=10 && x<17) {
                 pending_key='m'; message(GB_MSG_FRAME); continue;
             }
-            if (y<8 && x>=10 && ((mode==3 && x<26) || ((mode==5 || mode==6) && x<17))) {
+            if (ag_mouse_y<8 && x>=10 && ((mode==3 && x<26) || ((mode==5 || mode==6) && x<17))) {
                 gb_msg.p0=x; message(GB_MSG_MENU); message(GB_MSG_FRAME); continue;
             }
             if (x<live.x || x>=live.x+live.w || y<live.y || y>=live.y+live.h) {
                 for (i=count-1;i;) {
                     const Rect *r=&guests[order[--i]].rect;
-                    if (x>=r->x && x<r->x+r->w && y>=r->y && y<r->y+r->h) {
+                    unsigned ry=guests[order[i]].base+r->y;
+                    if (x>=r->x && x<r->x+r->w && ag_mouse_y>=ry && ag_mouse_y<ry+r->h) {
                         raise_at(i); break;
                     }
                 }
@@ -217,5 +219,5 @@ void ws_run(void)
         } else if (k==27) message(GB_MSG_CLOSE);
         else { pending_key=k==253 ? 0 : k==254 ? ' ' : k; message(GB_MSG_FRAME); }
     }
-    mode=0; ag_bar();
+    mode=ag_ybase=0; ag_bar();
 }

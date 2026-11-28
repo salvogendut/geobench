@@ -50,9 +50,57 @@ start
                 db LIL
                 ld a,(ix+#27)         ; sysvar_scrMode
                 ld (restore_mode),a
+                xor a
+                ld (AG_YBASE),a
+                ld a,AG_WIDTH/320-1
+                ld (AG_VGA),a
+                ifdef AGON_VGA
+                db LIL
+                res 4,(ix+4)          ; mode change sends dimensions to MOS
+                endif
                 ld hl,screen_setup
                 ld bc,setup_end-screen_setup
                 call vdu
+                ifdef AGON_VGA
+                ld b,75               ; do not wait forever on older firmware
+mode_wait       db LIL
+                bit 4,(ix+4)
+                jr nz,mode_reply
+                halt
+                djnz mode_wait
+                jr mode_failed
+mode_reply      db LIL
+                ld l,(ix+#0f)
+                db LIL
+                ld h,(ix+#10)
+                ld de,640
+                or a
+                sbc hl,de
+                jr nz,mode_failed
+                db LIL
+                ld l,(ix+#11)
+                db LIL
+                ld h,(ix+#12)
+                ld de,480
+                or a
+                sbc hl,de
+                jr nz,mode_failed
+                db LIL
+                ld a,(ix+#15)
+                cp 16
+                jr z,mode_ready
+mode_failed     ld hl,restore_mode-1
+                ld bc,cleanup_end-restore_mode+1
+                call vdu
+                ld hl,vga_error
+                ld bc,vga_error_end-vga_error
+                call vdu
+                ld hl,1
+                jp return_mos
+vga_error       db "No 640x480x16. Run GEOBENCH.",13,10
+vga_error_end
+mode_ready
+                endif
                 call upload_logo
                 ld hl,system_image   ; the splash upload has released #a000
                 ld de,AG_SYSTEM
@@ -77,7 +125,7 @@ toggle_logo     xor 1
                 ld hl,plot_logo
                 ld bc,plot_end-plot_logo
                 jr paint
-hide_logo       ld bc,#1220           ; x=72 px, y=32
+hide_logo       ld bc,((AG_WIDTH-LOGO_W)/8)*256+(AG_HEIGHT-LOGO_H)/2
                 ld de,#2cb0           ; 176 x 176
                 xor a
                 call GB_FILL          ; viewport CLS would deactivate the sprite
@@ -95,9 +143,9 @@ wait_key        call AG_WAIT_INPUT
                 cp 58
                 jr nc,wait_key
                 ld a,(POLL_MX)        ; icon and caption share a hit area
-                cp 68
+                cp AG_WIDTH/4-12
                 jr c,disk_hit
-                cp 76
+                cp AG_WIDTH/4-4
                 jr nc,wait_key
                 ld a,'T'
                 jr accessory
@@ -171,11 +219,11 @@ desktop_disk    ld a,(icons_loaded)
                 ld bc,#0210
                 call GB_ICON
                 ld a,1               ; portable analog clock slot
-                ld bc,#4410
+                ld bc,(AG_WIDTH/4-12)*256+16
                 call GB_ICON
                 ld hl,clock_text
                 ld de,#0100
-                ld bc,#4432
+                ld bc,(AG_WIDTH/4-12)*256+50
                 call GB_TEXT
 disk_caption    ld hl,disk_text
                 ld de,#0100
@@ -391,7 +439,7 @@ error_text      db "GEOBENCH: missing or invalid /PICS/LOGO.PIC",13,10
 error_end
 disk_text       db "SD:",0
 clock_text      db "Clock",0
-screen_setup    db 22,9               ; 320x240, 16 colours, 4:3 VGA
+screen_setup    db 22,AG_MODE
                 db 23,1,0             ; hide text cursor
                 db 17,132,12          ; blue paper, CLS
                 db 17,135,17,0,31,0,0
@@ -422,7 +470,7 @@ define_end
 plot_logo       db 23,27,#20
                 dw BITMAP_ID
                 db 23,27,3
-                dw (320-LOGO_W)/2,(AG_LINES-LOGO_H)/2
+                dw (AG_WIDTH-LOGO_W)/2,(AG_HEIGHT-LOGO_H)/2
 plot_end
 cleanup         db 23,27,12,23,27,15,23,27,7,0,23,27,5
                 db 23,0,#a0

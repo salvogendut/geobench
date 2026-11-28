@@ -1,5 +1,6 @@
 /* The shared Viewer computes the viewport and resamples packed rows. Here
  * the focused guest streams those rows into a slot-owned VDP bitmap. */
+#include "agon_display.h"
 typedef unsigned char u8;
 static u8 handle;
 #include "agon_pic.h"
@@ -93,7 +94,7 @@ static u8 *source_row(unsigned y)
 static void agon_plot(void)
 {
     unsigned x=view_x*4;
-    plot_b[8]=x; plot_b[9]=x>>8; plot_b[10]=view_y;
+    plot_b[8]=x; plot_b[9]=x>>8; plot_b[10]=AG_PHYS_Y(view_y); plot_b[11]=AG_PHYS_Y(view_y)>>8;
     send(plot_b,sizeof plot_b);
 }
 static void agon_view(u8 cols,u8 lines)

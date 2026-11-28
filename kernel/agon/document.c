@@ -2,6 +2,7 @@
  * close and verify it, then rename. A failed rollback leaves a recovery copy. */
 #include <string.h>
 #include "gb.h"
+#include "agon_display.h"
 #include "storage.h"
 #include "gbagon.h"
 extern void ws_path_changed(const char *);
@@ -25,12 +26,16 @@ static __at(0x1700) volatile u8 op;
 
 void ag_bar(void)
 {
+    u8 base=ag_ybase;
+    ag_ybase=0;
     gb_fill(10,0,23,8,1);
     if (mode==1 || mode==3 || mode==5 || mode==6) gb_textbw(10,0,"File");
     if (mode==3) gb_textbw(17,0,"Edit");
+    ag_ybase=base;
 }
 
 static Rect under;
+static u8 under_base;
 static __at(0x3500) char pathbuf[256];
 #define fi ag_info
 static __at(0x3720) u8 directory[256];
@@ -46,11 +51,12 @@ void ag_doc_reset(void) { picked=0; validator=0; }
 void ag_panel(u8 x,u8 y,u8 w,u8 h)
 {
     static const u8 min[]={1,1};
-    under=live; live.x=x; live.y=y; live.w=w; live.h=h;
+    under=live; under_base=ag_ybase; ag_ybase=0;
+    live.x=x; live.y=y; live.w=w; live.h=h;
     ag_modal=1; layer_open(min);
     gb_fill(x,y,w,h,1); gb_frame(x,y,w,h,2);
 }
-void ag_dismiss(void) { layer_close(); live=under; ag_modal=0; }
+void ag_dismiss(void) { layer_close(); live=under; ag_ybase=under_base; ag_modal=0; }
 
 void ag_notice(const char *s)
 {
